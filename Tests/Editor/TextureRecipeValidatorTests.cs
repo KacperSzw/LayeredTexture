@@ -7,6 +7,35 @@ using UnityEngine.TestTools;
 public sealed class TextureRecipeValidatorTests
 {
     [Test]
+    public void TextureRecipe_DefaultOutputProfile_UsesExpectedSettings()
+    {
+        var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
+
+        Assert.That(recipe.Output.Resolution, Is.EqualTo(new Vector2Int(1024, 1024)));
+        Assert.That(recipe.Output.WorkingFormat, Is.EqualTo(GraphicsFormat.R16G16B16A16_UNorm));
+        Assert.That(recipe.Output.OutputGraphicsFormat, Is.EqualTo(GraphicsFormat.R8G8B8A8_UNorm));
+        Assert.That(recipe.Output.ExportFormat, Is.EqualTo(ExportFileFormat.PNG));
+        Assert.That(recipe.Output.OutputPath, Is.Null);
+        Assert.That(recipe.Output.GenerateMips, Is.False);
+        Assert.That(recipe.Output.SRGB, Is.False);
+
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void LayerSourceDefaults_AreRuntimeTextureReferences()
+    {
+        var textureLayer = new TextureFileLayer();
+        var channelPack = new ChannelPackLayer();
+
+        Assert.That(textureLayer.Source.Kind, Is.EqualTo(TextureSourceKind.RuntimeTextureReference));
+        Assert.That(channelPack.R.Texture.Kind, Is.EqualTo(TextureSourceKind.RuntimeTextureReference));
+        Assert.That(channelPack.G.Texture.Kind, Is.EqualTo(TextureSourceKind.RuntimeTextureReference));
+        Assert.That(channelPack.B.Texture.Kind, Is.EqualTo(TextureSourceKind.RuntimeTextureReference));
+        Assert.That(channelPack.A.Texture.Kind, Is.EqualTo(TextureSourceKind.RuntimeTextureReference));
+    }
+
+    [Test]
     public void ValidateRuntime_DefaultRecipe_IsValid()
     {
         IgnoreUnsupportedCompute();

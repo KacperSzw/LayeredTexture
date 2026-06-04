@@ -25,9 +25,6 @@ namespace Unmanaged.LayeredTexture
 
         static bool ValidateOutput(OutputProfile output)
         {
-            if (output == null)
-                return Fail("TextureRecipe.Output is missing.");
-
             var valid = true;
 
             if (output.Resolution.x <= 0 || output.Resolution.y <= 0)

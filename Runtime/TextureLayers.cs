@@ -6,7 +6,7 @@ namespace Unmanaged.LayeredTexture
     [Serializable]
     public sealed class TextureFileLayer : TextureLayerBase
     {
-        public TextureSource Source = new();
+        public TextureSource Source;
 
         public override void Process(BakeContext ctx) => throw new NotImplementedException();
     }
@@ -83,10 +83,10 @@ namespace Unmanaged.LayeredTexture
     [Serializable]
     public sealed class ChannelPackLayer : TextureLayerBase
     {
-        public ChannelPackSource R = new();
-        public ChannelPackSource G = new();
-        public ChannelPackSource B = new();
-        public ChannelPackSource A = new();
+        public ChannelPackSource R;
+        public ChannelPackSource G;
+        public ChannelPackSource B;
+        public ChannelPackSource A;
 
         public override void Process(BakeContext ctx) => throw new NotImplementedException();
     }
@@ -109,9 +109,9 @@ namespace Unmanaged.LayeredTexture
     }
 
     [Serializable]
-    public sealed class ChannelPackSource
+    public struct ChannelPackSource
     {
-        public TextureSource Texture = new();
+        public TextureSource Texture;
         public TextureChannel Channel;
         public float DefaultValue;
     }

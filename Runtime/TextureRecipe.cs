@@ -9,7 +9,7 @@ namespace Unmanaged.LayeredTexture
     public sealed class TextureRecipe : ScriptableObject
     {
         public LayerStack RootStack = new();
-        public OutputProfile Output = new();
+        public OutputProfile Output = OutputProfile.Default;
     }
 
     [Serializable]
@@ -21,14 +21,22 @@ namespace Unmanaged.LayeredTexture
     }
 
     [Serializable]
-    public sealed class OutputProfile
+    public struct OutputProfile
     {
-        public Vector2Int Resolution = new(1024, 1024);
-        public GraphicsFormat WorkingFormat = GraphicsFormat.R16G16B16A16_UNorm;
-        public GraphicsFormat OutputGraphicsFormat = GraphicsFormat.R8G8B8A8_UNorm;
-        public ExportFileFormat ExportFormat = ExportFileFormat.PNG;
+        public Vector2Int Resolution;
+        public GraphicsFormat WorkingFormat;
+        public GraphicsFormat OutputGraphicsFormat;
+        public ExportFileFormat ExportFormat;
         public string OutputPath;
         public bool GenerateMips;
         public bool SRGB;
+
+        public static OutputProfile Default => new()
+        {
+            Resolution = new Vector2Int(1024, 1024),
+            WorkingFormat = GraphicsFormat.R16G16B16A16_UNorm,
+            OutputGraphicsFormat = GraphicsFormat.R8G8B8A8_UNorm,
+            ExportFormat = ExportFileFormat.PNG
+        };
     }
 }

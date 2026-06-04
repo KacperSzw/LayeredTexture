@@ -29,9 +29,9 @@ namespace Unmanaged.LayeredTexture
     }
 
     [Serializable]
-    public sealed class TextureSource
+    public struct TextureSource
     {
-        public TextureSourceKind Kind = TextureSourceKind.RuntimeTextureReference;
+        public TextureSourceKind Kind;
         public string ProjectAssetGuid;
         public string ProjectAssetPath;
         public string ExternalRootId;
@@ -114,9 +114,9 @@ namespace Unmanaged.LayeredTexture
 
     public enum TextureSourceKind
     {
+        RuntimeTextureReference,
         ProjectAssetRawFile,
-        ExternalRootRelative,
-        RuntimeTextureReference
+        ExternalRootRelative
     }
 
     public enum ExportFileFormat
