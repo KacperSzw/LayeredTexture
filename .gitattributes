@@ -6,6 +6,7 @@
 *.asmdef text eol=lf
 *.cs text eol=lf
 *.compute text eol=lf
+*.hlsl text eol=lf
 *.json text eol=lf
 *.md text eol=lf
 *.meta text eol=lf

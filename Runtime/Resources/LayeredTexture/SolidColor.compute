@@ -1,0 +1,25 @@
+#pragma kernel SolidColor
+
+#include "LayeredTextureCommon.hlsl"
+
+RWTexture2D<float4> _Result;
+Texture2D<float4> _Previous;
+
+float4 _Resolution;
+float4 _Color;
+float _Opacity;
+uint _BlendMode;
+uint _WriteMask;
+
+[numthreads(8, 8, 1)]
+void SolidColor(uint3 id : SV_DispatchThreadID)
+{
+    uint2 resolution = (uint2)_Resolution.xy;
+
+    if (id.x >= resolution.x || id.y >= resolution.y)
+        return;
+
+    int3 pixel = int3(id.xy, 0);
+    float4 previous = _Previous.Load(pixel);
+    _Result[id.xy] = LT_ApplyLayer(previous, _Color, 1.0, _Opacity, _BlendMode, _WriteMask);
+}
