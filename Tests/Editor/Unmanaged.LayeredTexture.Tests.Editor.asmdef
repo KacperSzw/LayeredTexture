@@ -1,0 +1,21 @@
+{
+  "name": "Unmanaged.LayeredTexture.Tests.Editor",
+  "rootNamespace": "Unmanaged.LayeredTexture.Tests.Editor",
+  "references": [
+    "Unmanaged.LayeredTexture",
+    "Unmanaged.LayeredTexture.Editor",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

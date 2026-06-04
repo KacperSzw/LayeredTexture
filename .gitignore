@@ -1,0 +1,19 @@
+# Unity generated folders
+Library/
+Temp/
+Logs/
+UserSettings/
+
+# Unity generated project files
+*.csproj
+*.sln
+*.user
+
+# IDE/editor state
+.vs/
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db

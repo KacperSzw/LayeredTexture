@@ -1,0 +1,22 @@
+{
+  "name": "com.unmanaged.layered-texture",
+  "version": "0.1.0",
+  "displayName": "LayeredTexture",
+  "description": "Layered texture recipe authoring and baking for Unity.",
+  "unity": "6000.3",
+  "license": "MIT",
+  "author": {
+    "name": "KacperSzw"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KacperSzw/LayeredTexture.git"
+  },
+  "keywords": [
+    "texture",
+    "baking",
+    "layers",
+    "mask",
+    "unity"
+  ]
+}
