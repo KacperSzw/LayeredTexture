@@ -15,7 +15,7 @@ public sealed class TextureRecipeEvaluatorTests
         var result = TextureRecipeEvaluator.Evaluate(recipe);
 
         Assert.That(result, Is.Not.Null);
-        AssertColor(ReadPixel(result), Color.clear);
+        AssertTexturePixels(result, Color.clear);
         LogAssert.NoUnexpectedReceived();
 
         Release(result);
@@ -36,7 +36,43 @@ public sealed class TextureRecipeEvaluatorTests
         var result = TextureRecipeEvaluator.Evaluate(recipe);
 
         Assert.That(result, Is.Not.Null);
-        AssertColor(ReadPixel(result), new Color(0.25f, 0.5f, 0.75f, 1f));
+        AssertTexturePixels(result, new Color(0.25f, 0.5f, 0.75f, 1f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [TestCase(BlendMode.Normal, 0.6f, 0.25f, 0.9f, 0.2f)]
+    [TestCase(BlendMode.Replace, 0.6f, 0.25f, 0.9f, 0.2f)]
+    [TestCase(BlendMode.Add, 0.85f, 0.75f, 1f, 0.6f)]
+    [TestCase(BlendMode.Multiply, 0.15f, 0.125f, 0.675f, 0.08f)]
+    [TestCase(BlendMode.Min, 0.25f, 0.25f, 0.75f, 0.2f)]
+    [TestCase(BlendMode.Max, 0.6f, 0.5f, 0.9f, 0.4f)]
+    public void Evaluate_SolidColorBlendMode_ReturnsExpectedColor(
+        BlendMode blendMode,
+        float expectedR,
+        float expectedG,
+        float expectedB,
+        float expectedA)
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe();
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.25f, 0.5f, 0.75f, 0.4f)
+        });
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.6f, 0.25f, 0.9f, 0.2f),
+            BlendMode = blendMode
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertTexturePixels(result, new Color(expectedR, expectedG, expectedB, expectedA));
         LogAssert.NoUnexpectedReceived();
 
         Release(result);
@@ -62,7 +98,31 @@ public sealed class TextureRecipeEvaluatorTests
         var result = TextureRecipeEvaluator.Evaluate(recipe);
 
         Assert.That(result, Is.Not.Null);
-        AssertColor(ReadPixel(result), new Color(0.5f, 0f, 0.5f, 1f));
+        AssertTexturePixels(result, new Color(0.5f, 0f, 0.5f, 1f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_SolidColorLayerPreserveRange_PreservesValuesOutsideZeroOne()
+    {
+        IgnoreUnsupportedCompute();
+        IgnoreUnsupportedWorkingFormat(GraphicsFormat.R32G32B32A32_SFloat, "Float LayeredTexture working format");
+
+        var recipe = CreateRecipe();
+        recipe.Output.WorkingFormat = GraphicsFormat.R32G32B32A32_SFloat;
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(1.5f, -0.25f, 0.5f, 2f),
+            FormatPolicy = LayerFormatPolicy.PreserveRange
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertTexturePixels(result, new Color(1.5f, -0.25f, 0.5f, 2f), TextureFormat.RGBAFloat);
         LogAssert.NoUnexpectedReceived();
 
         Release(result);
@@ -88,7 +148,7 @@ public sealed class TextureRecipeEvaluatorTests
         var result = TextureRecipeEvaluator.Evaluate(recipe);
 
         Assert.That(result, Is.Not.Null);
-        AssertColor(ReadPixel(result), new Color(1f, 0.2f, 0.3f, 0.4f));
+        AssertTexturePixels(result, new Color(1f, 0.2f, 0.3f, 0.4f));
         LogAssert.NoUnexpectedReceived();
 
         Release(result);
@@ -110,6 +170,24 @@ public sealed class TextureRecipeEvaluatorTests
         Object.DestroyImmediate(recipe);
     }
 
+    [Test]
+    public void Evaluate_TextureFileLayer_ReturnsNullAfterValidationRejects()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe();
+        recipe.RootStack.Layers.Add(new TextureFileLayer());
+
+        LogAssert.Expect(LogType.Error, "TextureFileLayer is not supported at runtime.");
+        LogAssert.Expect(LogType.Error, "TextureFileLayer is not supported at runtime.");
+
+        Assert.That(TextureRecipeEvaluator.ValidateRuntime(recipe), Is.False);
+        Assert.That(TextureRecipeEvaluator.Evaluate(recipe), Is.Null);
+        LogAssert.NoUnexpectedReceived();
+
+        Object.DestroyImmediate(recipe);
+    }
+
     static TextureRecipe CreateRecipe()
     {
         var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
@@ -117,29 +195,39 @@ public sealed class TextureRecipeEvaluatorTests
         return recipe;
     }
 
-    static Color ReadPixel(RenderTexture renderTexture)
+    static void AssertTexturePixels(RenderTexture renderTexture, Color expected, TextureFormat textureFormat = TextureFormat.RGBA32)
     {
+        Assert.That(renderTexture.width, Is.EqualTo(2));
+        Assert.That(renderTexture.height, Is.EqualTo(2));
+
         var active = RenderTexture.active;
-        var texture = new Texture2D(renderTexture.width, renderTexture.height, TextureFormat.RGBA32, false, true);
+        var texture = new Texture2D(renderTexture.width, renderTexture.height, textureFormat, false, true);
 
-        RenderTexture.active = renderTexture;
-        texture.ReadPixels(new Rect(0, 0, renderTexture.width, renderTexture.height), 0, 0);
-        texture.Apply();
+        try
+        {
+            RenderTexture.active = renderTexture;
+            texture.ReadPixels(new Rect(0, 0, renderTexture.width, renderTexture.height), 0, 0);
+            texture.Apply();
 
-        var color = texture.GetPixel(0, 0);
-        Object.DestroyImmediate(texture);
-        RenderTexture.active = active;
-        return color;
+            for (var y = 0; y < texture.height; y++)
+            for (var x = 0; x < texture.width; x++)
+                AssertColor(texture.GetPixel(x, y), expected, $"Pixel ({x}, {y})");
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+            RenderTexture.active = active;
+        }
     }
 
-    static void AssertColor(Color actual, Color expected)
+    static void AssertColor(Color actual, Color expected, string message)
     {
         const float Tolerance = 0.02f;
 
-        Assert.That(actual.r, Is.EqualTo(expected.r).Within(Tolerance));
-        Assert.That(actual.g, Is.EqualTo(expected.g).Within(Tolerance));
-        Assert.That(actual.b, Is.EqualTo(expected.b).Within(Tolerance));
-        Assert.That(actual.a, Is.EqualTo(expected.a).Within(Tolerance));
+        Assert.That(actual.r, Is.EqualTo(expected.r).Within(Tolerance), $"{message} red");
+        Assert.That(actual.g, Is.EqualTo(expected.g).Within(Tolerance), $"{message} green");
+        Assert.That(actual.b, Is.EqualTo(expected.b).Within(Tolerance), $"{message} blue");
+        Assert.That(actual.a, Is.EqualTo(expected.a).Within(Tolerance), $"{message} alpha");
     }
 
     static void Release(RenderTexture texture)
@@ -153,7 +241,15 @@ public sealed class TextureRecipeEvaluatorTests
         if (!SystemInfo.supportsComputeShaders)
             Assert.Ignore("Compute shaders are not supported in this editor environment.");
 
-        if (!SystemInfo.IsFormatSupported(GraphicsFormat.R16G16B16A16_UNorm, GraphicsFormatUsage.Render))
-            Assert.Ignore("Default LayeredTexture working format is not renderable in this editor environment.");
+        IgnoreUnsupportedWorkingFormat(GraphicsFormat.R16G16B16A16_UNorm, "Default LayeredTexture working format");
+    }
+
+    static void IgnoreUnsupportedWorkingFormat(GraphicsFormat format, string label)
+    {
+        if (!SystemInfo.IsFormatSupported(format, GraphicsFormatUsage.Render))
+            Assert.Ignore($"{label} is not renderable in this editor environment.");
+
+        if (!SystemInfo.IsFormatSupported(format, GraphicsFormatUsage.LoadStore))
+            Assert.Ignore($"{label} does not support compute writes in this editor environment.");
     }
 }

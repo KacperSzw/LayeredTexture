@@ -9,7 +9,9 @@ float4 _Resolution;
 float4 _Color;
 float _Opacity;
 uint _BlendMode;
+float4 _InputSwizzle;
 uint _WriteMask;
+uint _FormatPolicy;
 
 [numthreads(8, 8, 1)]
 void SolidColor(uint3 id : SV_DispatchThreadID)
@@ -21,5 +23,13 @@ void SolidColor(uint3 id : SV_DispatchThreadID)
 
     int3 pixel = int3(id.xy, 0);
     float4 previous = _Previous.Load(pixel);
-    _Result[id.xy] = LT_ApplyLayer(previous, _Color, 1.0, _Opacity, _BlendMode, _WriteMask);
+    _Result[id.xy] = LT_ApplyLayer(
+        previous,
+        _Color,
+        1.0,
+        _Opacity,
+        _BlendMode,
+        (uint4)_InputSwizzle,
+        _WriteMask,
+        _FormatPolicy);
 }

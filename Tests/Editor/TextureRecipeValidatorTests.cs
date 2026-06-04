@@ -20,28 +20,21 @@ public sealed class TextureRecipeValidatorTests
     }
 
     [Test]
-    public void ValidateRuntime_EditorOnlyTextureSource_IsInvalid()
+    public void ValidateRuntime_SolidColorLayer_IsValid()
     {
         IgnoreUnsupportedCompute();
 
         var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
-        recipe.RootStack.Layers.Add(new TextureFileLayer
-        {
-            Source = new TextureSource
-            {
-                Kind = TextureSourceKind.ProjectAssetRawFile
-            }
-        });
+        recipe.RootStack.Layers.Add(new SolidColorLayer());
 
-        LogAssert.Expect(LogType.Error, "Runtime validation requires RuntimeTextureReference sources.");
-
-        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.False);
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
 
         Object.DestroyImmediate(recipe);
     }
 
     [Test]
-    public void ValidateRuntime_RuntimeTextureReference_IsValid()
+    public void ValidateRuntime_TextureFileLayer_IsInvalid()
     {
         IgnoreUnsupportedCompute();
 
@@ -57,15 +50,46 @@ public sealed class TextureRecipeValidatorTests
             }
         });
 
-        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
-        LogAssert.NoUnexpectedReceived();
+        LogAssert.Expect(LogType.Error, "TextureFileLayer is not supported at runtime.");
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.False);
 
         Object.DestroyImmediate(texture);
         Object.DestroyImmediate(recipe);
     }
 
     [Test]
-    public void ValidateRuntime_DirectRecipeCycle_IsInvalid()
+    public void ValidateRuntime_ChannelPackLayer_IsInvalid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
+        recipe.RootStack.Layers.Add(new ChannelPackLayer());
+
+        LogAssert.Expect(LogType.Error, "ChannelPackLayer is not supported at runtime.");
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.False);
+
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void ValidateRuntime_ChannelFillLayer_IsInvalid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
+        recipe.RootStack.Layers.Add(new ChannelFillLayer());
+
+        LogAssert.Expect(LogType.Error, "ChannelFillLayer is not supported at runtime.");
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.False);
+
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void ValidateRuntime_RecipeReferenceLayer_IsInvalid()
     {
         IgnoreUnsupportedCompute();
 
@@ -75,7 +99,7 @@ public sealed class TextureRecipeValidatorTests
             Recipe = recipe
         });
 
-        LogAssert.Expect(LogType.Error, "Recursive recipe reference detected.");
+        LogAssert.Expect(LogType.Error, "RecipeReferenceLayer is not supported at runtime.");
 
         Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.False);
 
@@ -83,7 +107,7 @@ public sealed class TextureRecipeValidatorTests
     }
 
     [Test]
-    public void ValidateRuntime_InlineMaskStackCycle_IsInvalid()
+    public void ValidateRuntime_NonNoneMask_IsInvalid()
     {
         IgnoreUnsupportedCompute();
 
@@ -97,7 +121,7 @@ public sealed class TextureRecipeValidatorTests
             }
         });
 
-        LogAssert.Expect(LogType.Error, "Recursive inline stack detected.");
+        LogAssert.Expect(LogType.Error, "Layer masks are not supported at runtime.");
 
         Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.False);
 
@@ -105,16 +129,18 @@ public sealed class TextureRecipeValidatorTests
     }
 
     [Test]
-    public void ValidateRuntime_MissingRecipeReference_IsInvalid()
+    public void ValidateRuntime_NoneMask_IsValid()
     {
         IgnoreUnsupportedCompute();
 
         var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
-        recipe.RootStack.Layers.Add(new RecipeReferenceLayer());
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Mask = new StackMask()
+        });
 
-        LogAssert.Expect(LogType.Error, "Recipe reference is missing.");
-
-        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.False);
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
 
         Object.DestroyImmediate(recipe);
     }
@@ -134,6 +160,21 @@ public sealed class TextureRecipeValidatorTests
         Object.DestroyImmediate(recipe);
     }
 
+    [Test]
+    public void ValidateRuntime_WorkingFormatWithoutComputeWrites_IsInvalid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
+        recipe.Output.WorkingFormat = GraphicsFormat.R8G8B8A8_SRGB;
+
+        LogAssert.Expect(LogType.Error, "TextureRecipe.Output.WorkingFormat does not support compute writes: R8G8B8A8_SRGB.");
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.False);
+
+        Object.DestroyImmediate(recipe);
+    }
+
     static void IgnoreUnsupportedCompute()
     {
         if (!SystemInfo.supportsComputeShaders)
@@ -141,5 +182,8 @@ public sealed class TextureRecipeValidatorTests
 
         if (!SystemInfo.IsFormatSupported(GraphicsFormat.R16G16B16A16_UNorm, GraphicsFormatUsage.Render))
             Assert.Ignore("Default LayeredTexture working format is not renderable in this editor environment.");
+
+        if (!SystemInfo.IsFormatSupported(GraphicsFormat.R16G16B16A16_UNorm, GraphicsFormatUsage.LoadStore))
+            Assert.Ignore("Default LayeredTexture working format does not support compute writes in this editor environment.");
     }
 }

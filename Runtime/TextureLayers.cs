@@ -16,6 +16,9 @@ namespace Unmanaged.LayeredTexture
     {
         public Color Color = Color.white;
 
+        const string ShaderPath = "LayeredTexture/SolidColor";
+        const string KernelName = "SolidColor";
+
         static ComputeShader shader;
         static readonly int ResultId = Shader.PropertyToID("_Result");
         static readonly int PreviousId = Shader.PropertyToID("_Previous");
@@ -23,24 +26,57 @@ namespace Unmanaged.LayeredTexture
         static readonly int ColorId = Shader.PropertyToID("_Color");
         static readonly int OpacityId = Shader.PropertyToID("_Opacity");
         static readonly int BlendModeId = Shader.PropertyToID("_BlendMode");
+        static readonly int InputSwizzleId = Shader.PropertyToID("_InputSwizzle");
         static readonly int WriteMaskId = Shader.PropertyToID("_WriteMask");
+        static readonly int FormatPolicyId = Shader.PropertyToID("_FormatPolicy");
 
         public override void Process(BakeContext ctx)
         {
-            shader ??= Resources.Load<ComputeShader>("LayeredTexture/SolidColor");
+            if (!TryGetShaderKernel(out var shader, out var kernel, out var error))
+                throw new InvalidOperationException(error);
 
-            if (shader == null)
-                throw new InvalidOperationException("LayeredTexture/SolidColor compute shader is missing.");
-
-            var kernel = shader.FindKernel("SolidColor");
             shader.SetTexture(kernel, ResultId, ctx.current);
             shader.SetTexture(kernel, PreviousId, ctx.previous);
             shader.SetVector(ResolutionId, new Vector4(ctx.resolution.x, ctx.resolution.y, 0f, 0f));
             shader.SetVector(ColorId, Color);
             shader.SetFloat(OpacityId, Opacity);
             shader.SetInt(BlendModeId, (int)BlendMode);
+            shader.SetVector(InputSwizzleId, new Vector4(
+                (int)InputSwizzle.R,
+                (int)InputSwizzle.G,
+                (int)InputSwizzle.B,
+                (int)InputSwizzle.A));
             shader.SetInt(WriteMaskId, (int)WriteMask);
-            shader.Dispatch(kernel, Mathf.CeilToInt(ctx.resolution.x / 8f), Mathf.CeilToInt(ctx.resolution.y / 8f), 1);
+            shader.SetInt(FormatPolicyId, (int)FormatPolicy);
+            shader.Dispatch(kernel, (ctx.resolution.x + 7) / 8, (ctx.resolution.y + 7) / 8, 1);
+        }
+
+        internal static bool TryGetShaderKernel(out ComputeShader shader, out int kernel, out string error)
+        {
+            shader = SolidColorLayer.shader != null
+                ? SolidColorLayer.shader
+                : Resources.Load<ComputeShader>(ShaderPath);
+            SolidColorLayer.shader = shader;
+            kernel = -1;
+
+            if (shader == null)
+            {
+                error = $"{ShaderPath} compute shader is missing.";
+                return false;
+            }
+
+            try
+            {
+                kernel = shader.FindKernel(KernelName);
+            }
+            catch (Exception exception)
+            {
+                error = $"{ShaderPath} compute shader is missing kernel {KernelName}: {exception.Message}";
+                return false;
+            }
+
+            error = null;
+            return true;
         }
     }
 

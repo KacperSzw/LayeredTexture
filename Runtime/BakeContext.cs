@@ -18,12 +18,20 @@ namespace Unmanaged.LayeredTexture
         {
             workingFormat = output.WorkingFormat;
             resolution = output.Resolution;
-            current = CreateTexture("LayeredTexture Current", output);
-            previous = CreateTexture("LayeredTexture Previous", output);
-            cmd = new CommandBuffer
+            try
             {
-                name = "LayeredTexture"
-            };
+                current = CreateTexture("LayeredTexture Current", output);
+                previous = CreateTexture("LayeredTexture Previous", output);
+                cmd = new CommandBuffer
+                {
+                    name = "LayeredTexture"
+                };
+            }
+            catch
+            {
+                Dispose();
+                throw;
+            }
         }
 
         public void ClearCurrent(Color color)
@@ -54,7 +62,11 @@ namespace Unmanaged.LayeredTexture
             Release(current);
             Release(previous);
             Release(mask);
+            current = null;
+            previous = null;
+            mask = null;
             cmd?.Release();
+            cmd = null;
         }
 
         static RenderTexture CreateTexture(string name, OutputProfile output)
@@ -73,7 +85,14 @@ namespace Unmanaged.LayeredTexture
             {
                 name = name
             };
-            texture.Create();
+
+            if (!texture.Create())
+            {
+                Release(texture);
+                throw new InvalidOperationException(
+                    $"Failed to create {name} render texture ({output.Resolution.x}x{output.Resolution.y}, {output.WorkingFormat}).");
+            }
+
             return texture;
         }
 
@@ -83,7 +102,11 @@ namespace Unmanaged.LayeredTexture
                 return;
 
             texture.Release();
-            UnityEngine.Object.DestroyImmediate(texture);
+
+            if (Application.isPlaying)
+                UnityEngine.Object.Destroy(texture);
+            else
+                UnityEngine.Object.DestroyImmediate(texture);
         }
     }
 }
