@@ -140,6 +140,7 @@ namespace Unmanaged.LayeredTexture
                     textureFileLayer.Source,
                     ctx.sourceResolver,
                     out _),
+                RecipeReferenceLayer recipeReferenceLayer => recipeReferenceLayer.Recipe != null,
                 _ => true
             };
     }

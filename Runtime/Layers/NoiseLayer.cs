@@ -12,7 +12,7 @@ namespace Unmanaged.LayeredTexture
         public NoiseType NoiseType = NoiseType.Gradient;
         public NoiseFractal Fractal = NoiseFractal.FBM;
         public int Seed = 1;
-        public float Scale = 8f;
+        public Vector2 Scale = new(8f, 8f);
         public Vector2 Offset;
         public float Rotation;
         public int Octaves = 4;
@@ -24,6 +24,12 @@ namespace Unmanaged.LayeredTexture
         public bool Invert;
         public float Contrast = 1f;
         public float Brightness;
+
+        /// <inheritdoc />
+        public override TextureLayerRole Role => TextureLayerRole.Source;
+
+        /// <inheritdoc />
+        public override bool SupportsRawPreview => true;
 
         /// <inheritdoc />
         public override void Process(BakeContext ctx)
@@ -38,10 +44,11 @@ namespace Unmanaged.LayeredTexture
                 Seed,
                 Invert ? 1f : 0f));
             shader.SetVector(LayerCompute.NoiseTransformId, new Vector4(
-                Scale,
-                Rotation * Mathf.Deg2Rad,
+                Scale.x,
+                Scale.y,
                 Offset.x,
                 Offset.y));
+            shader.SetFloat(LayerCompute.NoiseRotationId, Rotation * Mathf.Deg2Rad);
             shader.SetVector(LayerCompute.NoiseFractalSettingsId, new Vector4(
                 Octaves,
                 Lacunarity,

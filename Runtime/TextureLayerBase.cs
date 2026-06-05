@@ -40,6 +40,16 @@ namespace Unmanaged.LayeredTexture
         public StackMask Mask = new();
 
         /// <summary>
+        /// Broad editor/runtime role used to present this layer.
+        /// </summary>
+        public virtual TextureLayerRole Role => TextureLayerRole.Processor;
+
+        /// <summary>
+        /// Whether this layer can render a raw, non-composited preview.
+        /// </summary>
+        public virtual bool SupportsRawPreview => false;
+
+        /// <summary>
         /// Writes this layer result into the active bake context.
         /// </summary>
         /// <param name="ctx">Current bake context containing working textures and mask state.</param>
@@ -166,6 +176,15 @@ namespace Unmanaged.LayeredTexture
         G,
         B,
         A
+    }
+
+    /// <summary>
+    /// Broad layer role used by editor UI and future layer organization.
+    /// </summary>
+    public enum TextureLayerRole
+    {
+        Source,
+        Processor
     }
 
     /// <summary>

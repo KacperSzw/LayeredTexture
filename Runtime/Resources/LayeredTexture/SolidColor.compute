@@ -1,6 +1,7 @@
 #pragma kernel SolidColor
 #pragma kernel TextureFile
 #pragma kernel Noise
+#pragma kernel NormalFromHeight
 
 #include "LayeredTextureCommon.hlsl"
 
@@ -15,9 +16,12 @@ float4 _Resolution;
 float4 _Color;
 float4 _NoiseSettings;
 float4 _NoiseTransform;
+float _NoiseRotation;
 float4 _NoiseFractalSettings;
 float4 _NoiseWarpSettings;
 float4 _NoiseOutputSettings;
+uint _HeightUsage;
+float _NormalStrength;
 float _Opacity;
 uint _BlendMode;
 float4 _InputSwizzle;
@@ -26,6 +30,7 @@ uint _UseMask;
 uint _MaskUsage;
 uint _MaskInvert;
 float _MaskOpacity;
+uint _RawPreview;
 
 float LT_LayerMask(float2 uv)
 {
@@ -74,7 +79,7 @@ float LT_ValueNoise(float2 p, float seed, float2 period)
 float2 LT_GradientVector(float2 p, float seed, float2 period)
 {
     p = LT_WrapCell(p, period);
-    float angle = LT_Hash21(p, seed) * 6.28318530718 + _NoiseTransform.y;
+    float angle = LT_Hash21(p, seed) * 6.28318530718 + _NoiseRotation;
     return float2(cos(angle), sin(angle));
 }
 
@@ -208,9 +213,9 @@ float LT_WarpNoise(float2 p, float seed, float2 basePeriod, float baseFrequency)
     return amplitudeSum > 0.0 ? value / amplitudeSum : 0.0;
 }
 
-float2 LT_NoisePosition(float2 uv, float basePeriod)
+float2 LT_NoisePosition(float2 uv, float2 period)
 {
-    return uv * basePeriod + _NoiseTransform.zw;
+    return uv * period + _NoiseTransform.zw;
 }
 
 float LT_NoiseValue(float2 uv)
@@ -218,9 +223,8 @@ float LT_NoiseValue(float2 uv)
     uint type = (uint)round(_NoiseSettings.x);
     uint fractal = (uint)round(_NoiseSettings.y);
     float seed = _NoiseSettings.z;
-    float basePeriod = LT_Period(_NoiseTransform.x);
-    float2 period = basePeriod.xx;
-    float2 p = LT_NoisePosition(uv, basePeriod);
+    float2 period = float2(LT_Period(_NoiseTransform.x), LT_Period(_NoiseTransform.y));
+    float2 p = LT_NoisePosition(uv, period);
     float warpStrength = _NoiseWarpSettings.x;
 
     if (abs(warpStrength) > 0.0001)
@@ -241,6 +245,47 @@ float LT_NoiseValue(float2 uv)
     return saturate(value);
 }
 
+int2 LT_WrapPixel(int2 pixel, uint2 resolution)
+{
+    int2 size = (int2)resolution;
+    pixel %= size;
+    return (pixel + size) % size;
+}
+
+float LT_HeightValue(float4 sample, uint usage)
+{
+    if (usage == LT_MASK_R)
+        return sample.r;
+
+    if (usage == LT_MASK_G)
+        return sample.g;
+
+    if (usage == LT_MASK_B)
+        return sample.b;
+
+    if (usage == LT_MASK_A)
+        return sample.a;
+
+    return dot(sample.rgb, float3(0.2126, 0.7152, 0.0722));
+}
+
+float LT_HeightAt(int2 pixel, uint2 resolution)
+{
+    return LT_HeightValue(_Previous.Load(int3(LT_WrapPixel(pixel, resolution), 0)), _HeightUsage);
+}
+
+float4 LT_NormalFromHeight(int2 pixel, uint2 resolution)
+{
+    float left = LT_HeightAt(pixel + int2(-1, 0), resolution);
+    float right = LT_HeightAt(pixel + int2(1, 0), resolution);
+    float down = LT_HeightAt(pixel + int2(0, -1), resolution);
+    float up = LT_HeightAt(pixel + int2(0, 1), resolution);
+    float2 gradient = float2(right - left, up - down) * _Resolution.xy * 0.5 * _NormalStrength;
+    float3 normal = normalize(float3(-gradient.x, -gradient.y, 1.0));
+
+    return float4(normal * 0.5 + 0.5, _Previous.Load(int3(pixel, 0)).a);
+}
+
 [numthreads(8, 8, 1)]
 void SolidColor(uint3 id : SV_DispatchThreadID)
 {
@@ -259,7 +304,8 @@ void SolidColor(uint3 id : SV_DispatchThreadID)
         _Opacity,
         _BlendMode,
         (uint4)_InputSwizzle,
-        _WriteMask);
+        _WriteMask,
+        _RawPreview);
 }
 
 [numthreads(8, 8, 1)]
@@ -281,7 +327,8 @@ void TextureFile(uint3 id : SV_DispatchThreadID)
         _Opacity,
         _BlendMode,
         (uint4)_InputSwizzle,
-        _WriteMask);
+        _WriteMask,
+        _RawPreview);
 }
 
 [numthreads(8, 8, 1)]
@@ -303,5 +350,29 @@ void Noise(uint3 id : SV_DispatchThreadID)
         _Opacity,
         _BlendMode,
         (uint4)_InputSwizzle,
-        _WriteMask);
+        _WriteMask,
+        _RawPreview);
+}
+
+[numthreads(8, 8, 1)]
+void NormalFromHeight(uint3 id : SV_DispatchThreadID)
+{
+    uint2 resolution = (uint2)_Resolution.xy;
+
+    if (id.x >= resolution.x || id.y >= resolution.y)
+        return;
+
+    int3 pixel = int3(id.xy, 0);
+    float2 uv = (id.xy + 0.5) / resolution;
+    float4 previous = _Previous.Load(pixel);
+    float4 candidate = LT_NormalFromHeight(pixel.xy, resolution);
+    _Result[id.xy] = LT_ApplyLayer(
+        previous,
+        candidate,
+        LT_LayerMask(uv),
+        _Opacity,
+        _BlendMode,
+        (uint4)_InputSwizzle,
+        _WriteMask,
+        _RawPreview);
 }

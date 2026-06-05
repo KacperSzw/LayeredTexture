@@ -71,9 +71,13 @@ float4 LT_ApplyLayer(
     float opacity,
     uint blendMode,
     uint4 swizzle,
-    uint writeMask)
+    uint writeMask,
+    uint rawPreview)
 {
     candidate = LT_Swizzle(candidate, swizzle);
+
+    if (rawPreview != 0)
+        return saturate(candidate);
 
     float influence = saturate(mask) * saturate(opacity);
     float4 blended = LT_Blend(previous, candidate, blendMode);

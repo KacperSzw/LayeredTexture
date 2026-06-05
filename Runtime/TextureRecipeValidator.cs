@@ -105,13 +105,16 @@ namespace Unmanaged.LayeredTexture
                     continue;
 
                 valid &= ValidateMask(layer.Mask, visiting);
-                valid &= ValidateLayer(layer, resolution);
+                valid &= ValidateLayer(layer, resolution, visiting);
             }
 
             return valid;
         }
 
-        static bool ValidateLayer(TextureLayerBase layer, Vector2Int resolution)
+        static bool ValidateLayer(
+            TextureLayerBase layer,
+            Vector2Int resolution,
+            System.Collections.Generic.HashSet<TextureRecipe> visiting)
         {
             switch (layer)
             {
@@ -127,11 +130,27 @@ namespace Unmanaged.LayeredTexture
                     return NoiseLayer.TryGetShaderKernel(out _, out _, out error)
                         ? true
                         : Fail(error);
-                case RecipeReferenceLayer:
-                    return Fail("RecipeReferenceLayer is not supported at runtime.");
+                case NormalFromHeightLayer:
+                    return NormalFromHeightLayer.TryGetShaderKernel(out _, out _, out error)
+                        ? true
+                        : Fail(error);
+                case RecipeReferenceLayer recipeReferenceLayer:
+                    return ValidateRecipeReferenceLayer(recipeReferenceLayer, visiting);
                 default:
                     return Fail($"{layer.GetType().Name} is not supported at runtime.");
             }
+        }
+
+        static bool ValidateRecipeReferenceLayer(
+            RecipeReferenceLayer layer,
+            System.Collections.Generic.HashSet<TextureRecipe> visiting)
+        {
+            if (layer.Recipe == null)
+                return true;
+
+            return TextureFileLayer.TryGetShaderKernel(out _, out _, out var error)
+                ? ValidateRecipe(layer.Recipe, layer.Recipe.Output, visiting)
+                : Fail(error);
         }
 
         static bool ValidateMask(StackMask mask, System.Collections.Generic.HashSet<TextureRecipe> visiting)

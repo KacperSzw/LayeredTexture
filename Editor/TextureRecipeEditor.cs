@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
@@ -11,7 +12,10 @@ namespace Unmanaged.LayeredTexture.Editor
         SerializedProperty layers;
         ReorderableList layerList;
         RenderTexture previewTexture;
+        readonly Dictionary<int, RenderTexture> layerPreviews = new();
         bool previewDirty = true;
+        TexturePreviewDisplayMode previewDisplayMode;
+        int previewSize;
         string previewError;
         string bakeStatus;
         MessageType bakeStatusType;
@@ -23,11 +27,22 @@ namespace Unmanaged.LayeredTexture.Editor
         static float SectionGap => 4f;
         static float HeaderHeight => 20f;
         static float LabelWidth => 82f;
+        static float PreviewRailWidth => 154f;
+        static float LayerPreviewHeight => 86f;
+        static float HeaderPreviewWidth => 56f;
+        const string PreviewDisplayModeKey = "Unmanaged.LayeredTexture.PreviewDisplayMode";
+        const string PreviewSizeKey = "Unmanaged.LayeredTexture.PreviewSize";
+        const int MinPreviewSize = 80;
+        const int MaxPreviewSize = 512;
 
         void OnEnable()
         {
             output = serializedObject.FindProperty("Output");
             layers = serializedObject.FindProperty("RootStack").FindPropertyRelative("Layers");
+            previewDisplayMode = (TexturePreviewDisplayMode)EditorPrefs.GetInt(
+                PreviewDisplayModeKey,
+                (int)TexturePreviewDisplayMode.RgbAlpha);
+            previewSize = EditorPrefs.GetInt(PreviewSizeKey, 220);
             layerList = new ReorderableList(serializedObject, layers, true, true, true, true)
             {
                 drawHeaderCallback = rect => EditorGUI.LabelField(rect, "Layers"),
@@ -45,6 +60,7 @@ namespace Unmanaged.LayeredTexture.Editor
         {
             Undo.undoRedoPerformed -= HandleUndoRedo;
             ReleasePreview();
+            ReleaseLayerPreviews();
         }
 
         public override void OnInspectorGUI()
@@ -126,36 +142,64 @@ namespace Unmanaged.LayeredTexture.Editor
             DrawLayerFrame(layerRect);
 
             var contentRect = Inset(layerRect, LayerPadding, LayerPadding);
-            var headerRect = new Rect(contentRect.x, contentRect.y, contentRect.width, HeaderHeight);
+            var textureLayer = (TextureLayerBase)layer.managedReferenceValue;
+            var headerPreviewRect = textureLayer.SupportsRawPreview
+                ? new Rect(contentRect.xMax - HeaderPreviewWidth, contentRect.y, HeaderPreviewWidth, HeaderHeight)
+                : default;
+            var headerRect = textureLayer.SupportsRawPreview
+                ? new Rect(contentRect.x, contentRect.y, headerPreviewRect.x - contentRect.x - SectionGap, HeaderHeight)
+                : new Rect(contentRect.x, contentRect.y, contentRect.width, HeaderHeight);
+
             DrawLayerHeaderRow(headerRect, layer);
+
+            if (!layer.isExpanded && textureLayer.SupportsRawPreview)
+                DrawLayerPreviewColumn(headerPreviewRect, index, textureLayer, true);
 
             if (!layer.isExpanded)
                 return;
 
             var y = headerRect.yMax + SectionGap;
-            var specificRect = new Rect(contentRect.x, y, contentRect.width, GetLayerSpecificHeight(layer));
+            var bodyHeight = GetLayerBodyHeight(layer);
+            var fieldsWidth = contentRect.width;
+
+            if (textureLayer.SupportsRawPreview)
+            {
+                var previewRailRect = new Rect(
+                    contentRect.xMax - PreviewRailWidth,
+                    y,
+                    PreviewRailWidth,
+                    bodyHeight);
+                DrawLayerPreviewColumn(previewRailRect, index, textureLayer, false);
+                fieldsWidth = Mathf.Max(1f, previewRailRect.x - contentRect.x - SectionGap);
+            }
+
+            var specificRect = new Rect(contentRect.x, y, fieldsWidth, GetLayerSpecificHeight(layer));
             DrawLayerSpecificBox(specificRect, layer);
         }
 
         void DrawLayerHeaderRow(Rect rect, SerializedProperty layer)
         {
+            var textureLayer = (TextureLayerBase)layer.managedReferenceValue;
             var enabled = layer.FindPropertyRelative("Enabled");
             var writeMask = layer.FindPropertyRelative("WriteMask");
             var opacity = layer.FindPropertyRelative("Opacity");
             var blendMode = layer.FindPropertyRelative("BlendMode");
-            var enabledRect = new Rect(rect.x + 3f, rect.y + 1f, 18f, rect.height);
-            var foldoutArrowRect = new Rect(enabledRect.xMax + 14f, rect.y, 14f, rect.height);
-            var blendRect = new Rect(rect.xMax - 96f, rect.y, 96f, rect.height);
-            var opacityRect = new Rect(blendRect.x - 116f, rect.y, 112f, rect.height);
-            var channelRect = new Rect(opacityRect.x - 98f, rect.y + 1f, 94f, rect.height - 2f);
+            var rowY = rect.y + 2f;
+            var enabledRect = new Rect(rect.x + 3f, rowY + 1f, 18f, LineHeight);
+            var foldoutArrowRect = new Rect(enabledRect.xMax + 14f, rowY, 14f, LineHeight);
+            var roleRect = new Rect(foldoutArrowRect.xMax + 4f, rowY + 2f, 18f, LineHeight - 4f);
+            var blendRect = new Rect(rect.xMax - 96f, rowY, 96f, LineHeight);
+            var opacityRect = new Rect(blendRect.x - 116f, rowY, 112f, LineHeight);
+            var channelRect = new Rect(opacityRect.x - 98f, rowY + 1f, 94f, LineHeight - 2f);
             var titleRect = new Rect(
-                foldoutArrowRect.xMax + 6f,
-                rect.y,
-                Mathf.Max(80f, channelRect.x - foldoutArrowRect.xMax - 8f),
-                rect.height);
+                roleRect.xMax + 6f,
+                rowY,
+                Mathf.Max(80f, channelRect.x - roleRect.xMax - 8f),
+                LineHeight);
 
             EditorGUI.PropertyField(enabledRect, enabled, GUIContent.none);
             layer.isExpanded = EditorGUI.Foldout(foldoutArrowRect, layer.isExpanded, GUIContent.none, true);
+            DrawRoleBadge(roleRect, textureLayer.Role);
             EditorGUI.LabelField(titleRect, LayerName(layer), EditorStyles.boldLabel);
             DrawWriteMaskButtons(channelRect, writeMask);
             opacity.floatValue = EditorGUI.Slider(opacityRect, GUIContent.none, opacity.floatValue, 0f, 1f);
@@ -181,6 +225,17 @@ namespace Unmanaged.LayeredTexture.Editor
                 case NoiseLayer:
                     DrawNoiseFields(ref rect, layer);
                     break;
+                case NormalFromHeightLayer:
+                    DrawNoiseRow(
+                        NextLine(ref rect),
+                        layer.FindPropertyRelative("HeightUsage"),
+                        "Height",
+                        layer.FindPropertyRelative("Strength"),
+                        "Strength");
+                    break;
+                case RecipeReferenceLayer:
+                    EditorGUI.PropertyField(NextLine(ref rect), layer.FindPropertyRelative("Recipe"));
+                    break;
                 default:
                     var helpRect = NextLine(ref rect);
                     helpRect.height = LineHeight * 2f;
@@ -202,7 +257,7 @@ namespace Unmanaged.LayeredTexture.Editor
             return HeaderHeight
                 + LayerPadding * 2f
                 + SectionGap
-                + GetLayerSpecificHeight(layer)
+                + GetLayerBodyHeight(layer)
                 + 4f;
         }
 
@@ -213,11 +268,22 @@ namespace Unmanaged.LayeredTexture.Editor
                 SolidColorLayer => 1,
                 TextureFileLayer => 1,
                 NoiseLayer => 6,
+                NormalFromHeightLayer => 1,
+                RecipeReferenceLayer => 1,
                 _ => 2
             };
 
             lines++;
             return lines * LineHeight + (lines - 1) * Spacing + SectionPadding * 2f;
+        }
+
+        static float GetLayerBodyHeight(SerializedProperty layer)
+        {
+            var height = GetLayerSpecificHeight(layer);
+
+            return layer.managedReferenceValue is TextureLayerBase { SupportsRawPreview: true }
+                ? Mathf.Max(height, LayerPreviewHeight)
+                : height;
         }
 
         static void DrawWriteMaskButtons(Rect rect, SerializedProperty writeMask)
@@ -249,6 +315,17 @@ namespace Unmanaged.LayeredTexture.Editor
             GUI.backgroundColor = previousColor;
         }
 
+        static void DrawRoleBadge(Rect rect, TextureLayerRole role)
+        {
+            var previousColor = GUI.backgroundColor;
+            GUI.backgroundColor = role == TextureLayerRole.Source
+                ? new Color(0.34f, 0.56f, 0.78f)
+                : new Color(0.74f, 0.48f, 0.26f);
+
+            GUI.Box(rect, role == TextureLayerRole.Source ? "S" : "P", EditorStyles.miniButton);
+            GUI.backgroundColor = previousColor;
+        }
+
         static void DrawLayerFrame(Rect rect)
         {
             GUI.Box(rect, GUIContent.none, EditorStyles.helpBox);
@@ -270,6 +347,8 @@ namespace Unmanaged.LayeredTexture.Editor
             menu.AddItem(new GUIContent("Solid Color"), false, () => AddLayer(new SolidColorLayer()));
             menu.AddItem(new GUIContent("Texture File"), false, () => AddLayer(new TextureFileLayer()));
             menu.AddItem(new GUIContent("Noise"), false, () => AddLayer(new NoiseLayer()));
+            menu.AddItem(new GUIContent("Normal From Height"), false, () => AddLayer(new NormalFromHeightLayer()));
+            menu.AddItem(new GUIContent("Recipe Reference"), false, () => AddLayer(new RecipeReferenceLayer()));
             menu.DropDown(buttonRect);
         }
 
@@ -314,6 +393,7 @@ namespace Unmanaged.LayeredTexture.Editor
             using (new EditorGUILayout.HorizontalScope())
             {
                 EditorGUILayout.LabelField("Preview", EditorStyles.boldLabel);
+                DrawPreviewControls();
 
                 if (GUILayout.Button("Refresh", GUILayout.Width(72f)))
                     MarkPreviewDirty();
@@ -328,13 +408,39 @@ namespace Unmanaged.LayeredTexture.Editor
                 return;
             }
 
-            var aspect = previewTexture.height > 0
-                ? (float)previewTexture.height / previewTexture.width
-                : 1f;
-            var width = Mathf.Max(1f, EditorGUIUtility.currentViewWidth - 38f);
-            var height = Mathf.Clamp(width * aspect, 80f, 220f);
+            var height = Mathf.Clamp(previewSize, MinPreviewSize, MaxPreviewSize);
             var rect = EditorGUILayout.GetControlRect(false, height);
-            EditorGUI.DrawPreviewTexture(rect, previewTexture, null, ScaleMode.ScaleToFit);
+            TexturePreviewGUI.Draw(rect, previewTexture, previewDisplayMode);
+        }
+
+        void DrawPreviewControls()
+        {
+            EditorGUI.BeginChangeCheck();
+            previewDisplayMode = (TexturePreviewDisplayMode)EditorGUILayout.EnumPopup(
+                previewDisplayMode,
+                GUILayout.Width(96f));
+            previewSize = EditorGUILayout.IntSlider(
+                previewSize,
+                MinPreviewSize,
+                MaxPreviewSize,
+                GUILayout.Width(180f));
+
+            if (!EditorGUI.EndChangeCheck())
+                return;
+
+            EditorPrefs.SetInt(PreviewDisplayModeKey, (int)previewDisplayMode);
+            EditorPrefs.SetInt(PreviewSizeKey, previewSize);
+            Repaint();
+        }
+
+        void DrawLayerPreviewColumn(Rect rect, int index, TextureLayerBase layer, bool compact)
+        {
+            var preview = GetLayerPreview(index, layer);
+
+            if (compact)
+                TexturePreviewGUI.DrawCompact(rect, preview);
+            else
+                TexturePreviewGUI.Draw(rect, preview);
         }
 
         void Bake()
@@ -376,6 +482,7 @@ namespace Unmanaged.LayeredTexture.Editor
         void MarkPreviewDirty()
         {
             previewDirty = true;
+            ReleaseLayerPreviews();
             Repaint();
         }
 
@@ -383,12 +490,35 @@ namespace Unmanaged.LayeredTexture.Editor
 
         void ReleasePreview()
         {
-            if (previewTexture == null)
+            ReleaseRenderTexture(previewTexture);
+            previewTexture = null;
+        }
+
+        void ReleaseLayerPreviews()
+        {
+            foreach (var preview in layerPreviews.Values)
+                ReleaseRenderTexture(preview);
+
+            layerPreviews.Clear();
+        }
+
+        RenderTexture GetLayerPreview(int index, TextureLayerBase layer)
+        {
+            if (layerPreviews.TryGetValue(index, out var preview))
+                return preview;
+
+            preview = TextureLayerPreviewEvaluator.EvaluateRaw((TextureRecipe)target, layer);
+            layerPreviews[index] = preview;
+            return preview;
+        }
+
+        static void ReleaseRenderTexture(RenderTexture texture)
+        {
+            if (texture == null)
                 return;
 
-            previewTexture.Release();
-            DestroyImmediate(previewTexture);
-            previewTexture = null;
+            texture.Release();
+            DestroyImmediate(texture);
         }
 
         void DrawTextureSource(Rect rect, SerializedProperty source, string _)
@@ -447,41 +577,43 @@ namespace Unmanaged.LayeredTexture.Editor
 
         static void DrawNoiseFields(ref Rect rect, SerializedProperty layer)
         {
-            DrawLabeledPair(
+            DrawNoiseRow(
                 NextLine(ref rect),
                 layer.FindPropertyRelative("NoiseType"),
                 "Type",
                 layer.FindPropertyRelative("Fractal"),
-                "Fractal");
-            DrawLabeledPair(
-                NextLine(ref rect),
+                "Fractal",
                 layer.FindPropertyRelative("Seed"),
-                "Seed",
+                "Seed");
+            DrawNoiseScaleRow(
+                NextLine(ref rect),
                 layer.FindPropertyRelative("Scale"),
-                "Scale");
-            DrawLabeledPair(
+                layer.FindPropertyRelative("Rotation"));
+            DrawNoiseOffsetRow(
                 NextLine(ref rect),
-                layer.FindPropertyRelative("Offset"),
-                "Offset",
-                layer.FindPropertyRelative("Rotation"),
-                "Rotation");
-            DrawLabeledTriple(
+                layer.FindPropertyRelative("Offset"));
+
+            var fractal = layer.FindPropertyRelative("Fractal");
+
+            using (new EditorGUI.DisabledScope((NoiseFractal)fractal.enumValueIndex == NoiseFractal.None))
+            {
+                DrawNoiseRow(
+                    NextLine(ref rect),
+                    layer.FindPropertyRelative("Octaves"),
+                    "Octaves",
+                    layer.FindPropertyRelative("Lacunarity"),
+                    "Lacunarity",
+                    layer.FindPropertyRelative("Gain"),
+                    "Gain");
+            }
+
+            var warpStrength = layer.FindPropertyRelative("WarpStrength");
+            DrawNoiseWarpRow(
                 NextLine(ref rect),
-                layer.FindPropertyRelative("Octaves"),
-                "Oct",
-                layer.FindPropertyRelative("Lacunarity"),
-                "Lacunarity",
-                layer.FindPropertyRelative("Gain"),
-                "Gain");
-            DrawLabeledTriple(
-                NextLine(ref rect),
-                layer.FindPropertyRelative("WarpStrength"),
-                "Warp",
+                warpStrength,
                 layer.FindPropertyRelative("WarpScale"),
-                "Scale",
-                layer.FindPropertyRelative("WarpOctaves"),
-                "Oct");
-            DrawLabeledTriple(
+                layer.FindPropertyRelative("WarpOctaves"));
+            DrawNoiseRow(
                 NextLine(ref rect),
                 layer.FindPropertyRelative("Contrast"),
                 "Contrast",
@@ -569,6 +701,102 @@ namespace Unmanaged.LayeredTexture.Editor
             source.FindPropertyRelative("RuntimeTexture").objectReferenceValue = null;
         }
 
+        static void DrawNoiseWarpRow(
+            Rect rect,
+            SerializedProperty strength,
+            SerializedProperty scale,
+            SerializedProperty octaves)
+        {
+            const float Gap = 8f;
+            var width = (rect.width - Gap * 2f) / 3f;
+            DrawLabeledField(new Rect(rect.x, rect.y, width, rect.height), strength, "Warp Strength");
+
+            using (new EditorGUI.DisabledScope(Mathf.Abs(strength.floatValue) <= 0.0001f))
+            {
+                DrawLabeledField(new Rect(rect.x + width + Gap, rect.y, width, rect.height), scale, "Warp Scale");
+                DrawLabeledField(new Rect(rect.x + (width + Gap) * 2f, rect.y, width, rect.height), octaves, "Warp Octaves");
+            }
+        }
+
+        static void DrawNoiseScaleRow(Rect rect, SerializedProperty scale, SerializedProperty rotation)
+        {
+            const float Gap = 8f;
+            var width = (rect.width - Gap * 2f) / 3f;
+            var value = scale.vector2Value;
+
+            EditorGUI.BeginChangeCheck();
+            value.x = DrawFloatField(new Rect(rect.x, rect.y, width, rect.height), "Scale X", value.x);
+            value.y = DrawFloatField(new Rect(rect.x + width + Gap, rect.y, width, rect.height), "Scale Y", value.y);
+
+            if (EditorGUI.EndChangeCheck())
+                scale.vector2Value = value;
+
+            DrawLabeledField(new Rect(rect.x + (width + Gap) * 2f, rect.y, width, rect.height), rotation, "Rotation");
+        }
+
+        static void DrawNoiseOffsetRow(Rect rect, SerializedProperty offset)
+        {
+            const float Gap = 8f;
+            var width = (rect.width - Gap) * 0.5f;
+            var value = offset.vector2Value;
+
+            EditorGUI.BeginChangeCheck();
+            value.x = DrawFloatField(new Rect(rect.x, rect.y, width, rect.height), "Offset X", value.x);
+            value.y = DrawFloatField(
+                new Rect(rect.x + width + Gap, rect.y, width, rect.height),
+                "Offset Y",
+                value.y);
+
+            if (EditorGUI.EndChangeCheck())
+                offset.vector2Value = value;
+        }
+
+        static void DrawNoiseRow(
+            Rect rect,
+            SerializedProperty first,
+            string firstLabel)
+        {
+            DrawLabeledField(rect, first, firstLabel);
+        }
+
+        static void DrawNoiseRow(
+            Rect rect,
+            SerializedProperty first,
+            string firstLabel,
+            SerializedProperty second,
+            string secondLabel)
+        {
+            const float Gap = 8f;
+            var width = (rect.width - Gap) * 0.5f;
+            DrawLabeledField(new Rect(rect.x, rect.y, width, rect.height), first, firstLabel);
+            DrawLabeledField(new Rect(rect.x + width + Gap, rect.y, width, rect.height), second, secondLabel);
+        }
+
+        static void DrawNoiseRow(
+            Rect rect,
+            SerializedProperty first,
+            string firstLabel,
+            SerializedProperty second,
+            string secondLabel,
+            SerializedProperty third,
+            string thirdLabel)
+        {
+            const float Gap = 8f;
+            var width = (rect.width - Gap * 2f) / 3f;
+            DrawLabeledField(new Rect(rect.x, rect.y, width, rect.height), first, firstLabel);
+            DrawLabeledField(new Rect(rect.x + width + Gap, rect.y, width, rect.height), second, secondLabel);
+            DrawLabeledField(new Rect(rect.x + (width + Gap) * 2f, rect.y, width, rect.height), third, thirdLabel);
+        }
+
+        static float DrawFloatField(Rect rect, string label, float value)
+        {
+            var previousWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = Mathf.Min(LabelWidth, rect.width * 0.45f);
+            var result = EditorGUI.FloatField(rect, label, value);
+            EditorGUIUtility.labelWidth = previousWidth;
+            return result;
+        }
+
         static TextureSource ReadTextureSource(SerializedProperty source) => new()
         {
             Kind = (TextureSourceKind)source.FindPropertyRelative("Kind").enumValueIndex,
@@ -595,43 +823,12 @@ namespace Unmanaged.LayeredTexture.Editor
             return line;
         }
 
-        static void DrawLabeledPair(
-            Rect rect,
-            SerializedProperty first,
-            string firstLabel,
-            SerializedProperty second,
-            string secondLabel)
-        {
-            const float Gap = 8f;
-            var width = (rect.width - Gap) * 0.5f;
-            DrawLabeledField(new Rect(rect.x, rect.y, width, rect.height), first, firstLabel);
-            DrawLabeledField(new Rect(rect.x + width + Gap, rect.y, width, rect.height), second, secondLabel);
-        }
-
-        static void DrawLabeledTriple(
-            Rect rect,
-            SerializedProperty first,
-            string firstLabel,
-            SerializedProperty second,
-            string secondLabel,
-            SerializedProperty third,
-            string thirdLabel)
-        {
-            const float Gap = 8f;
-            var width = (rect.width - Gap * 2f) / 3f;
-            DrawLabeledField(new Rect(rect.x, rect.y, width, rect.height), first, firstLabel);
-            DrawLabeledField(new Rect(rect.x + width + Gap, rect.y, width, rect.height), second, secondLabel);
-            DrawLabeledField(new Rect(rect.x + (width + Gap) * 2f, rect.y, width, rect.height), third, thirdLabel);
-        }
-
         static void DrawLabeledField(Rect rect, SerializedProperty property, string label)
         {
-            var labelWidth = Mathf.Min(LabelWidth, rect.width * 0.45f);
-            var labelRect = new Rect(rect.x, rect.y, labelWidth, rect.height);
-            var fieldRect = new Rect(labelRect.xMax + 3f, rect.y, rect.width - labelWidth - 3f, rect.height);
-
-            EditorGUI.LabelField(labelRect, label);
-            EditorGUI.PropertyField(fieldRect, property, GUIContent.none);
+            var previousWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = Mathf.Min(LabelWidth, rect.width * 0.45f);
+            EditorGUI.PropertyField(rect, property, new GUIContent(label));
+            EditorGUIUtility.labelWidth = previousWidth;
         }
 
         static Rect Inset(Rect rect, float x, float y) =>
@@ -644,9 +841,16 @@ namespace Unmanaged.LayeredTexture.Editor
                 SolidColorLayer => "Solid Color",
                 TextureFileLayer => "Texture File",
                 NoiseLayer => "Noise",
+                NormalFromHeightLayer => "Normal From Height",
                 RecipeReferenceLayer => "Recipe Reference",
                 _ => layer.managedReferenceValue.GetType().Name
             };
         }
+    }
+
+    enum TexturePreviewDisplayMode
+    {
+        RgbAlpha,
+        RGBAChannels
     }
 }

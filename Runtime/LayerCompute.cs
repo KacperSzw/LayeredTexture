@@ -8,6 +8,7 @@ namespace Unmanaged.LayeredTexture
         internal const string SolidColorKernel = "SolidColor";
         internal const string TextureFileKernel = "TextureFile";
         internal const string NoiseKernel = "Noise";
+        internal const string NormalFromHeightKernel = "NormalFromHeight";
 
         const string ShaderPath = "LayeredTexture/SolidColor";
 
@@ -17,9 +18,12 @@ namespace Unmanaged.LayeredTexture
         internal static readonly int ColorId = Shader.PropertyToID("_Color");
         internal static readonly int NoiseSettingsId = Shader.PropertyToID("_NoiseSettings");
         internal static readonly int NoiseTransformId = Shader.PropertyToID("_NoiseTransform");
+        internal static readonly int NoiseRotationId = Shader.PropertyToID("_NoiseRotation");
         internal static readonly int NoiseFractalSettingsId = Shader.PropertyToID("_NoiseFractalSettings");
         internal static readonly int NoiseWarpSettingsId = Shader.PropertyToID("_NoiseWarpSettings");
         internal static readonly int NoiseOutputSettingsId = Shader.PropertyToID("_NoiseOutputSettings");
+        internal static readonly int HeightUsageId = Shader.PropertyToID("_HeightUsage");
+        internal static readonly int NormalStrengthId = Shader.PropertyToID("_NormalStrength");
 
         static readonly int ResultId = Shader.PropertyToID("_Result");
         static readonly int PreviousId = Shader.PropertyToID("_Previous");
@@ -33,6 +37,7 @@ namespace Unmanaged.LayeredTexture
         static readonly int MaskUsageId = Shader.PropertyToID("_MaskUsage");
         static readonly int MaskInvertId = Shader.PropertyToID("_MaskInvert");
         static readonly int MaskOpacityId = Shader.PropertyToID("_MaskOpacity");
+        static readonly int RawPreviewId = Shader.PropertyToID("_RawPreview");
 
         internal static bool TryGetKernel(string kernelName, out ComputeShader shader, out int kernel, out string error)
         {
@@ -89,6 +94,7 @@ namespace Unmanaged.LayeredTexture
             shader.SetInt(MaskUsageId, useMask ? (int)ctx.activeMask.Usage : (int)MaskUsage.Grayscale);
             shader.SetInt(MaskInvertId, useMask && ctx.activeMask.Invert ? 1 : 0);
             shader.SetFloat(MaskOpacityId, useMask ? ctx.activeMask.Opacity : 1f);
+            shader.SetInt(RawPreviewId, ctx.rawPreview ? 1 : 0);
         }
 
         internal static void Dispatch(ComputeShader shader, int kernel, BakeContext ctx) =>

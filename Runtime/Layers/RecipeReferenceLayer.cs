@@ -1,9 +1,10 @@
 using System;
+using UnityEngine;
 
 namespace Unmanaged.LayeredTexture
 {
     /// <summary>
-    /// Placeholder layer for recipe-as-layer evaluation; currently unsupported at runtime.
+    /// Layer that samples another TextureRecipe and composites it into the stack.
     /// </summary>
     [Serializable]
     public sealed class RecipeReferenceLayer : TextureLayerBase
@@ -14,6 +15,40 @@ namespace Unmanaged.LayeredTexture
         public TextureRecipe Recipe;
 
         /// <inheritdoc />
-        public override void Process(BakeContext ctx) => throw new NotImplementedException();
+        public override TextureLayerRole Role => TextureLayerRole.Source;
+
+        /// <inheritdoc />
+        public override bool SupportsRawPreview => true;
+
+        /// <inheritdoc />
+        public override void Process(BakeContext ctx)
+        {
+            if (Recipe == null)
+                return;
+
+            if (!TextureFileLayer.TryGetShaderKernel(out var shader, out var kernel, out var error))
+                throw new InvalidOperationException(error);
+
+            var texture = TextureRecipeEvaluator.Evaluate(Recipe, ctx.sourceResolver);
+
+            if (texture == null)
+                return;
+
+            try
+            {
+                LayerCompute.SetCommon(shader, kernel, ctx, Opacity, BlendMode, InputSwizzle, WriteMask);
+                shader.SetTexture(kernel, LayerCompute.SourceId, texture);
+                LayerCompute.Dispatch(shader, kernel, ctx);
+            }
+            finally
+            {
+                texture.Release();
+
+                if (Application.isPlaying)
+                    UnityEngine.Object.Destroy(texture);
+                else
+                    UnityEngine.Object.DestroyImmediate(texture);
+            }
+        }
     }
 }

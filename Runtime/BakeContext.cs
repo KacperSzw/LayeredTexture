@@ -56,6 +56,11 @@ namespace Unmanaged.LayeredTexture
         public ITextureSourceResolver sourceResolver;
 
         /// <summary>
+        /// Whether layer kernels should output their raw candidate instead of compositing.
+        /// </summary>
+        public bool rawPreview;
+
+        /// <summary>
         /// Creates working render textures for one recipe evaluation.
         /// </summary>
         /// <param name="output">Output profile that defines resolution and working format.</param>

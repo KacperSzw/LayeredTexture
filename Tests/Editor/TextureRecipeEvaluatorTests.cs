@@ -379,6 +379,61 @@ public sealed class TextureRecipeEvaluatorTests
     }
 
     [Test]
+    public void Evaluate_RecipeReferenceLayer_CompositesReferencedRecipe()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe();
+        var reference = CreateRecipe();
+        reference.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = Color.blue
+        });
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = Color.red
+        });
+        recipe.RootStack.Layers.Add(new RecipeReferenceLayer
+        {
+            Recipe = reference,
+            Opacity = 0.5f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertTexturePixels(result, new Color(0.5f, 0f, 0.5f, 1f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(reference);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_RecipeReferenceLayerWithoutRecipe_SkipsLayer()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe();
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.2f, 0.4f, 0.6f, 0.8f)
+        });
+        recipe.RootStack.Layers.Add(new RecipeReferenceLayer());
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(TextureRecipeEvaluator.ValidateRuntime(recipe), Is.True);
+        Assert.That(result, Is.Not.Null);
+        AssertTexturePixels(result, new Color(0.2f, 0.4f, 0.6f, 0.8f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
     public void Evaluate_NoiseLayer_ReturnsGrayscaleRgba()
     {
         IgnoreUnsupportedCompute();
@@ -483,6 +538,28 @@ public sealed class TextureRecipeEvaluatorTests
         Object.DestroyImmediate(recipe);
     }
 
+    [Test]
+    public void Evaluate_NoiseLayer_VectorScaleProducesNonFlatOutput()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(16, 16);
+        recipe.RootStack.Layers.Add(new NoiseLayer
+        {
+            Scale = new Vector2(3f, 9f),
+            Seed = 23
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertNonFlat(result);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
     [TestCase(NoiseType.Value, NoiseFractal.None, 0f)]
     [TestCase(NoiseType.Gradient, NoiseFractal.FBM, 0f)]
     [TestCase(NoiseType.Gradient, NoiseFractal.FBM, 0.25f)]
@@ -500,7 +577,7 @@ public sealed class TextureRecipeEvaluatorTests
             NoiseType = noiseType,
             Fractal = fractal,
             Seed = 17,
-            Scale = 6f,
+            Scale = new Vector2(6f, 6f),
             Octaves = 3,
             Lacunarity = 2f,
             Gain = 0.45f,
@@ -549,6 +626,71 @@ public sealed class TextureRecipeEvaluatorTests
 
         Release(result);
         Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_NormalFromHeightLayer_ConstantHeightReturnsFlatNormalAndPreservesAlpha()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe();
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.25f, 0.25f, 0.25f, 0.8f)
+        });
+        recipe.RootStack.Layers.Add(new NormalFromHeightLayer());
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertTexturePixels(result, new Color(0.5f, 0.5f, 1f, 0.8f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_NormalFromHeightLayer_UsesSelectedHeightChannel()
+    {
+        IgnoreUnsupportedCompute();
+
+        var flatRecipe = CreateRecipe(4, 4);
+        var tiltedRecipe = CreateRecipe(4, 4);
+        var source = CreateGreenGradientTexture(4, 4);
+        var sourceLayer = new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        };
+
+        flatRecipe.RootStack.Layers.Add(sourceLayer);
+        flatRecipe.RootStack.Layers.Add(new NormalFromHeightLayer
+        {
+            HeightUsage = MaskUsage.R
+        });
+        tiltedRecipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        tiltedRecipe.RootStack.Layers.Add(new NormalFromHeightLayer
+        {
+            HeightUsage = MaskUsage.G
+        });
+
+        var flat = TextureRecipeEvaluator.Evaluate(flatRecipe);
+        var tilted = TextureRecipeEvaluator.Evaluate(tiltedRecipe);
+
+        Assert.That(flat, Is.Not.Null);
+        Assert.That(tilted, Is.Not.Null);
+        AssertFlatNormal(flat);
+        Assert.That(ContainsTiltedNormal(tilted), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(flat);
+        Release(tilted);
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(flatRecipe);
+        Object.DestroyImmediate(tiltedRecipe);
     }
 
     [Test]
@@ -612,6 +754,21 @@ public sealed class TextureRecipeEvaluatorTests
         for (var y = 0; y < texture.height; y++)
         for (var x = 0; x < texture.width; x++)
             texture.SetPixel(x, y, color);
+
+        texture.Apply();
+        return texture;
+    }
+
+    static Texture2D CreateGreenGradientTexture(int width, int height)
+    {
+        var texture = new Texture2D(width, height, TextureFormat.RGBA32, false, true)
+        {
+            filterMode = FilterMode.Point
+        };
+
+        for (var y = 0; y < texture.height; y++)
+        for (var x = 0; x < texture.width; x++)
+            texture.SetPixel(x, y, new Color(0.25f, x / (float)(width - 1), 0f, 1f));
 
         texture.Apply();
         return texture;
@@ -705,6 +862,23 @@ public sealed class TextureRecipeEvaluatorTests
 
         Assert.That(meanSeamX, Is.LessThanOrEqualTo(meanAdjacentX * 3f + 0.02f), "Horizontal tile seam");
         Assert.That(meanSeamY, Is.LessThanOrEqualTo(meanAdjacentY * 3f + 0.02f), "Vertical tile seam");
+    }
+
+    static void AssertFlatNormal(RenderTexture renderTexture)
+    {
+        foreach (var pixel in ReadPixels(renderTexture))
+            AssertColor(pixel, new Color(0.5f, 0.5f, 1f, 1f), "Flat normal");
+    }
+
+    static bool ContainsTiltedNormal(RenderTexture renderTexture)
+    {
+        foreach (var pixel in ReadPixels(renderTexture))
+        {
+            if (Mathf.Abs(pixel.r - 0.5f) > 0.02f || Mathf.Abs(pixel.g - 0.5f) > 0.02f)
+                return true;
+        }
+
+        return false;
     }
 
     static float PixelRed(Color[] pixels, int width, int x, int y) => pixels[y * width + x].r;

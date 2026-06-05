@@ -124,6 +124,20 @@ public sealed class TextureRecipeValidatorTests
     }
 
     [Test]
+    public void ValidateRuntime_NormalFromHeightLayer_IsValid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(1, 1);
+        recipe.RootStack.Layers.Add(new NormalFromHeightLayer());
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
     public void ValidateRuntime_TextureFileLayerWithoutRuntimeTexture_IsValid()
     {
         IgnoreUnsupportedCompute();
@@ -177,7 +191,41 @@ public sealed class TextureRecipeValidatorTests
     }
 
     [Test]
-    public void ValidateRuntime_RecipeReferenceLayer_IsInvalid()
+    public void ValidateRuntime_RecipeReferenceLayer_IsValid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(1, 1);
+        var reference = CreateRecipe(1, 1);
+        reference.RootStack.Layers.Add(new SolidColorLayer());
+        recipe.RootStack.Layers.Add(new RecipeReferenceLayer
+        {
+            Recipe = reference
+        });
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Object.DestroyImmediate(reference);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void ValidateRuntime_RecipeReferenceLayerWithoutRecipe_IsValid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(1, 1);
+        recipe.RootStack.Layers.Add(new RecipeReferenceLayer());
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void ValidateRuntime_RecursiveRecipeReferenceLayer_IsInvalid()
     {
         IgnoreUnsupportedCompute();
 
@@ -187,7 +235,7 @@ public sealed class TextureRecipeValidatorTests
             Recipe = recipe
         });
 
-        LogAssert.Expect(LogType.Error, "RecipeReferenceLayer is not supported at runtime.");
+        LogAssert.Expect(LogType.Error, "TextureRecipe mask reference cycle detected.");
 
         Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.False);
 

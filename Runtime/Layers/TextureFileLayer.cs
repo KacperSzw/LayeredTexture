@@ -15,6 +15,12 @@ namespace Unmanaged.LayeredTexture
         public TextureSource Source;
 
         /// <inheritdoc />
+        public override TextureLayerRole Role => TextureLayerRole.Source;
+
+        /// <inheritdoc />
+        public override bool SupportsRawPreview => true;
+
+        /// <inheritdoc />
         public override void Process(BakeContext ctx)
         {
             if (!TryGetShaderKernel(out var shader, out var kernel, out var error))
