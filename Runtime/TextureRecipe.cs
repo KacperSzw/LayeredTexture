@@ -5,32 +5,85 @@ using UnityEngine.Experimental.Rendering;
 
 namespace Unmanaged.LayeredTexture
 {
+    /// <summary>
+    /// Main ScriptableObject asset describing one layered texture bake recipe.
+    /// </summary>
     [CreateAssetMenu(menuName = "LayeredTexture/Texture Recipe")]
     public sealed class TextureRecipe : ScriptableObject
     {
+        /// <summary>
+        /// Directory used to resolve ProjectAssetRawFile texture sources.
+        /// </summary>
+        public RelativePath SourceDirectory = RelativePath.ProjectPreferences;
+
+        /// <summary>
+        /// Ordered root layer stack evaluated from top to bottom.
+        /// </summary>
         public LayerStack RootStack = new();
+
+        /// <summary>
+        /// Output resolution, working format, file path, export format, and import settings.
+        /// </summary>
         public OutputProfile Output = OutputProfile.Default;
     }
 
+    /// <summary>
+    /// Serializable ordered stack of polymorphic texture layers.
+    /// </summary>
     [Serializable]
     public sealed class LayerStack
     {
+        /// <summary>
+        /// Concrete layer instances evaluated sequentially.
+        /// </summary>
         [SerializeReference]
         public List<TextureLayerBase> Layers = new();
-        public StackEvalPolicy EvalPolicy;
     }
 
+    /// <summary>
+    /// Bake output configuration for preview, runtime evaluation, and editor export.
+    /// </summary>
     [Serializable]
     public struct OutputProfile
     {
+        /// <summary>
+        /// Width and height of the generated texture.
+        /// </summary>
         public Vector2Int Resolution;
+
+        /// <summary>
+        /// RenderTexture format used while evaluating layers.
+        /// </summary>
         public GraphicsFormat WorkingFormat;
+
+        /// <summary>
+        /// Intended final graphics format for the exported/imported texture.
+        /// </summary>
         public GraphicsFormat OutputGraphicsFormat;
+
+        /// <summary>
+        /// File format used by the editor bake pipeline.
+        /// </summary>
         public ExportFileFormat ExportFormat;
+
+        /// <summary>
+        /// Project-relative Assets path for baked output.
+        /// </summary>
         public string OutputPath;
+
+        /// <summary>
+        /// Whether the generated asset importer should generate mipmaps.
+        /// </summary>
         public bool GenerateMips;
+
+        /// <summary>
+        /// Whether the generated asset importer should treat the texture as sRGB.
+        /// </summary>
         public bool SRGB;
 
+        /// <summary>
+        /// Default 1024x1024 PNG output using UNorm working and output formats.
+        /// </summary>
         public static OutputProfile Default => new()
         {
             Resolution = new Vector2Int(1024, 1024),

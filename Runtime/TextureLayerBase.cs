@@ -3,42 +3,116 @@ using UnityEngine;
 
 namespace Unmanaged.LayeredTexture
 {
+    /// <summary>
+    /// Base class for all serializable layer implementations.
+    /// </summary>
     [Serializable]
     public abstract class TextureLayerBase
     {
+        /// <summary>
+        /// Whether the evaluator should process this layer.
+        /// </summary>
         public bool Enabled = true;
-        public BlendMode BlendMode = BlendMode.Normal;
-        public float Opacity = 1f;
-        public ChannelSwizzle InputSwizzle = ChannelSwizzle.Identity;
-        public ChannelWriteMask WriteMask = ChannelWriteMask.RGBA;
-        public StackMask Mask;
-        public LayerFormatPolicy FormatPolicy;
 
+        /// <summary>
+        /// Blend operation used when compositing this layer over the previous result.
+        /// </summary>
+        public BlendMode BlendMode = BlendMode.Normal;
+
+        /// <summary>
+        /// Layer influence applied after the optional mask.
+        /// </summary>
+        public float Opacity = 1f;
+
+        /// <summary>
+        /// Channel remapping applied to this layer candidate before compositing.
+        /// </summary>
+        public ChannelSwizzle InputSwizzle = ChannelSwizzle.Identity;
+
+        /// <summary>
+        /// Output channels this layer is allowed to write.
+        /// </summary>
+        public ChannelWriteMask WriteMask = ChannelWriteMask.RGBA;
+
+        /// <summary>
+        /// Optional recipe-reference mask applied to this layer.
+        /// </summary>
+        public StackMask Mask = new();
+
+        /// <summary>
+        /// Writes this layer result into the active bake context.
+        /// </summary>
+        /// <param name="ctx">Current bake context containing working textures and mask state.</param>
         public abstract void Process(BakeContext ctx);
     }
 
+    /// <summary>
+    /// Recipe-reference mask settings for a layer.
+    /// </summary>
     [Serializable]
     public sealed class StackMask
     {
-        public StackSource Source;
+        /// <summary>
+        /// Mask channel selection; grayscale uses linear RGB luminance.
+        /// </summary>
         public MaskUsage Usage = MaskUsage.Grayscale;
+
+        /// <summary>
+        /// Whether to invert the sampled mask value before opacity is applied.
+        /// </summary>
         public bool Invert;
+
+        /// <summary>
+        /// Multiplier applied to the sampled mask value.
+        /// </summary>
         public float Opacity = 1f;
-        public LayerStack InlineStack;
+
+        /// <summary>
+        /// Recipe evaluated recursively as this layer's mask. Null means no active mask.
+        /// </summary>
         public TextureRecipe RecipeReference;
     }
 
+    /// <summary>
+    /// Serializable texture source reference.
+    /// </summary>
     [Serializable]
     public struct TextureSource
     {
+        /// <summary>
+        /// Source lookup mode.
+        /// </summary>
         public TextureSourceKind Kind;
+
+        /// <summary>
+        /// Asset GUID captured for project asset sources.
+        /// </summary>
         public string ProjectAssetGuid;
+
+        /// <summary>
+        /// Path relative to TextureRecipe.SourceDirectory for ProjectAssetRawFile sources.
+        /// </summary>
         public string ProjectAssetPath;
+
+        /// <summary>
+        /// External root identifier reserved for external-root-relative sources.
+        /// </summary>
         public string ExternalRootId;
+
+        /// <summary>
+        /// Path relative to ExternalRootId for external-root-relative sources.
+        /// </summary>
         public string ExternalRelativePath;
+
+        /// <summary>
+        /// Direct runtime-safe Unity texture reference.
+        /// </summary>
         public Texture RuntimeTexture;
     }
 
+    /// <summary>
+    /// RGBA channel remap.
+    /// </summary>
     [Serializable]
     public struct ChannelSwizzle
     {
@@ -47,6 +121,9 @@ namespace Unmanaged.LayeredTexture
         public TextureChannel B;
         public TextureChannel A;
 
+        /// <summary>
+        /// Swizzle that preserves RGBA channel order.
+        /// </summary>
         public static ChannelSwizzle Identity => new()
         {
             R = TextureChannel.R,
@@ -56,6 +133,9 @@ namespace Unmanaged.LayeredTexture
         };
     }
 
+    /// <summary>
+    /// Output channel mask used by layers and channel-fill operations.
+    /// </summary>
     [Flags]
     public enum ChannelWriteMask
     {
@@ -67,6 +147,9 @@ namespace Unmanaged.LayeredTexture
         RGBA = R | G | B | A
     }
 
+    /// <summary>
+    /// Single texture channel identifier.
+    /// </summary>
     public enum TextureChannel
     {
         R,
@@ -75,6 +158,9 @@ namespace Unmanaged.LayeredTexture
         A
     }
 
+    /// <summary>
+    /// Layer compositing mode.
+    /// </summary>
     public enum BlendMode
     {
         Normal,
@@ -85,18 +171,9 @@ namespace Unmanaged.LayeredTexture
         Max
     }
 
-    public enum StackEvalPolicy
-    {
-        Sequential
-    }
-
-    public enum StackSource
-    {
-        None,
-        InlineStack,
-        RecipeReference
-    }
-
+    /// <summary>
+    /// Mask sampling mode.
+    /// </summary>
     public enum MaskUsage
     {
         Grayscale,
@@ -106,12 +183,9 @@ namespace Unmanaged.LayeredTexture
         A
     }
 
-    public enum LayerFormatPolicy
-    {
-        Clamp01,
-        PreserveRange
-    }
-
+    /// <summary>
+    /// Texture source storage and lookup mode.
+    /// </summary>
     public enum TextureSourceKind
     {
         RuntimeTextureReference,
@@ -119,10 +193,28 @@ namespace Unmanaged.LayeredTexture
         ExternalRootRelative
     }
 
+    /// <summary>
+    /// Export file format for editor bakes.
+    /// </summary>
     public enum ExportFileFormat
     {
         PNG,
         TGA,
         EXR
+    }
+
+    /// <summary>
+    /// Optional resolver for texture sources that are not direct runtime texture references.
+    /// </summary>
+    public interface ITextureSourceResolver
+    {
+        /// <summary>
+        /// Resolves a serialized texture source to a sampleable Unity texture.
+        /// </summary>
+        /// <param name="recipe">Owning recipe used for relative source context.</param>
+        /// <param name="source">Serialized texture source to resolve.</param>
+        /// <param name="texture">Resolved texture when successful.</param>
+        /// <returns>True when the source resolves to a supported texture.</returns>
+        bool TryResolve(TextureRecipe recipe, TextureSource source, out Texture texture);
     }
 }

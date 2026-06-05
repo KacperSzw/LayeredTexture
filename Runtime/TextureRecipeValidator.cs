@@ -3,24 +3,42 @@ using UnityEngine.Experimental.Rendering;
 
 namespace Unmanaged.LayeredTexture
 {
+    /// <summary>
+    /// Runtime validation for TextureRecipe assets.
+    /// </summary>
     public static class TextureRecipeValidator
     {
+        /// <summary>
+        /// Validates compute support, output settings, supported layers, and recursive mask references.
+        /// </summary>
+        /// <param name="recipe">Recipe to validate.</param>
+        /// <returns>True when the recipe can be evaluated at runtime.</returns>
         public static bool ValidateRuntime(TextureRecipe recipe)
         {
             if (!SystemInfo.supportsComputeShaders)
                 return Fail("LayeredTexture requires compute shader support.");
 
-            return ValidateRecipe(recipe);
+            return ValidateRecipe(recipe, new System.Collections.Generic.HashSet<TextureRecipe>());
         }
 
-        static bool ValidateRecipe(TextureRecipe recipe)
+        static bool ValidateRecipe(TextureRecipe recipe, System.Collections.Generic.HashSet<TextureRecipe> visiting)
         {
             if (recipe == null)
                 return Fail("TextureRecipe is missing.");
 
-            var valid = ValidateOutput(recipe.Output);
-            valid &= ValidateStack(recipe.RootStack);
-            return valid;
+            if (!visiting.Add(recipe))
+                return Fail("TextureRecipe mask reference cycle detected.");
+
+            try
+            {
+                var valid = ValidateOutput(recipe.Output);
+                valid &= ValidateStack(recipe.RootStack, recipe.Output.Resolution, visiting);
+                return valid;
+            }
+            finally
+            {
+                visiting.Remove(recipe);
+            }
         }
 
         static bool ValidateOutput(OutputProfile output)
@@ -40,7 +58,10 @@ namespace Unmanaged.LayeredTexture
             return valid;
         }
 
-        static bool ValidateStack(LayerStack stack)
+        static bool ValidateStack(
+            LayerStack stack,
+            Vector2Int resolution,
+            System.Collections.Generic.HashSet<TextureRecipe> visiting)
         {
             if (stack == null)
                 return Fail("TextureRecipe.RootStack is missing.");
@@ -63,14 +84,14 @@ namespace Unmanaged.LayeredTexture
                 if (!layer.Enabled)
                     continue;
 
-                valid &= ValidateMask(layer.Mask);
-                valid &= ValidateLayer(layer);
+                valid &= ValidateMask(layer.Mask, visiting);
+                valid &= ValidateLayer(layer, resolution);
             }
 
             return valid;
         }
 
-        static bool ValidateLayer(TextureLayerBase layer)
+        static bool ValidateLayer(TextureLayerBase layer, Vector2Int resolution)
         {
             switch (layer)
             {
@@ -79,11 +100,9 @@ namespace Unmanaged.LayeredTexture
                         ? true
                         : Fail(error);
                 case TextureFileLayer:
-                    return Fail("TextureFileLayer is not supported at runtime.");
-                case ChannelPackLayer:
-                    return Fail("ChannelPackLayer is not supported at runtime.");
-                case ChannelFillLayer:
-                    return Fail("ChannelFillLayer is not supported at runtime.");
+                    return TextureFileLayer.TryGetShaderKernel(out _, out _, out error)
+                        ? true
+                        : Fail(error);
                 case RecipeReferenceLayer:
                     return Fail("RecipeReferenceLayer is not supported at runtime.");
                 default:
@@ -91,12 +110,12 @@ namespace Unmanaged.LayeredTexture
             }
         }
 
-        static bool ValidateMask(StackMask mask)
+        static bool ValidateMask(StackMask mask, System.Collections.Generic.HashSet<TextureRecipe> visiting)
         {
-            if (mask == null || mask.Source == StackSource.None)
+            if (mask == null || mask.RecipeReference == null)
                 return true;
 
-            return Fail("Layer masks are not supported at runtime.");
+            return ValidateRecipe(mask.RecipeReference, visiting);
         }
 
         static bool Fail(string message)

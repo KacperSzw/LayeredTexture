@@ -1,9 +1,14 @@
 #pragma kernel SolidColor
+#pragma kernel TextureFile
 
 #include "LayeredTextureCommon.hlsl"
 
 RWTexture2D<float4> _Result;
 Texture2D<float4> _Previous;
+Texture2D<float4> _Source;
+Texture2D<float4> _Mask;
+SamplerState sampler_Source;
+SamplerState sampler_Mask;
 
 float4 _Resolution;
 float4 _Color;
@@ -11,7 +16,18 @@ float _Opacity;
 uint _BlendMode;
 float4 _InputSwizzle;
 uint _WriteMask;
-uint _FormatPolicy;
+uint _UseMask;
+uint _MaskUsage;
+uint _MaskInvert;
+float _MaskOpacity;
+
+float LT_LayerMask(float2 uv)
+{
+    if (_UseMask == 0)
+        return 1.0;
+
+    return LT_MaskValue(_Mask.SampleLevel(sampler_Mask, uv, 0), _MaskUsage, _MaskInvert, _MaskOpacity);
+}
 
 [numthreads(8, 8, 1)]
 void SolidColor(uint3 id : SV_DispatchThreadID)
@@ -22,14 +38,36 @@ void SolidColor(uint3 id : SV_DispatchThreadID)
         return;
 
     int3 pixel = int3(id.xy, 0);
+    float2 uv = (id.xy + 0.5) / resolution;
     float4 previous = _Previous.Load(pixel);
     _Result[id.xy] = LT_ApplyLayer(
         previous,
         _Color,
-        1.0,
+        LT_LayerMask(uv),
         _Opacity,
         _BlendMode,
         (uint4)_InputSwizzle,
-        _WriteMask,
-        _FormatPolicy);
+        _WriteMask);
+}
+
+[numthreads(8, 8, 1)]
+void TextureFile(uint3 id : SV_DispatchThreadID)
+{
+    uint2 resolution = (uint2)_Resolution.xy;
+
+    if (id.x >= resolution.x || id.y >= resolution.y)
+        return;
+
+    int3 pixel = int3(id.xy, 0);
+    float2 uv = (id.xy + 0.5) / resolution;
+    float4 previous = _Previous.Load(pixel);
+    float4 candidate = _Source.SampleLevel(sampler_Source, uv, 0);
+    _Result[id.xy] = LT_ApplyLayer(
+        previous,
+        candidate,
+        LT_LayerMask(uv),
+        _Opacity,
+        _BlendMode,
+        (uint4)_InputSwizzle,
+        _WriteMask);
 }

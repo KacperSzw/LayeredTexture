@@ -1,3 +1,4 @@
+using System.IO;
 using NUnit.Framework;
 using Unmanaged.LayeredTexture;
 using UnityEngine;
@@ -15,6 +16,8 @@ public sealed class TextureRecipeValidatorTests
         Assert.That(recipe.Output.WorkingFormat, Is.EqualTo(GraphicsFormat.R16G16B16A16_UNorm));
         Assert.That(recipe.Output.OutputGraphicsFormat, Is.EqualTo(GraphicsFormat.R8G8B8A8_UNorm));
         Assert.That(recipe.Output.ExportFormat, Is.EqualTo(ExportFileFormat.PNG));
+        Assert.That(recipe.SourceDirectory.Mode, Is.EqualTo(RelativePathMode.ProjectPreferences));
+        Assert.That(recipe.SourceDirectory.Path, Is.Null);
         Assert.That(recipe.Output.OutputPath, Is.Null);
         Assert.That(recipe.Output.GenerateMips, Is.False);
         Assert.That(recipe.Output.SRGB, Is.False);
@@ -26,13 +29,45 @@ public sealed class TextureRecipeValidatorTests
     public void LayerSourceDefaults_AreRuntimeTextureReferences()
     {
         var textureLayer = new TextureFileLayer();
-        var channelPack = new ChannelPackLayer();
 
         Assert.That(textureLayer.Source.Kind, Is.EqualTo(TextureSourceKind.RuntimeTextureReference));
-        Assert.That(channelPack.R.Texture.Kind, Is.EqualTo(TextureSourceKind.RuntimeTextureReference));
-        Assert.That(channelPack.G.Texture.Kind, Is.EqualTo(TextureSourceKind.RuntimeTextureReference));
-        Assert.That(channelPack.B.Texture.Kind, Is.EqualTo(TextureSourceKind.RuntimeTextureReference));
-        Assert.That(channelPack.A.Texture.Kind, Is.EqualTo(TextureSourceKind.RuntimeTextureReference));
+    }
+
+    [Test]
+    public void RelativePath_ProjectAssets_ResolvesAssetPath()
+    {
+        var path = RelativePath.FromAssetPath("Assets/LayeredTexture");
+
+        Assert.That(path.TryGetAssetPath(null, out var assetPath), Is.True);
+        Assert.That(assetPath, Is.EqualTo("Assets/LayeredTexture"));
+        Assert.That(path.TryGetAbsolutePath(out var absolutePath), Is.True);
+        Assert.That(absolutePath, Is.EqualTo(Path.GetFullPath(Path.Combine(Application.dataPath, "LayeredTexture"))));
+    }
+
+    [Test]
+    public void RelativePath_ProjectPreferences_ResolvesBelowProjectPreferenceRoot()
+    {
+        var root = Path.Combine(Application.dataPath, "LayeredTextureRoot");
+        var path = new RelativePath
+        {
+            Mode = RelativePathMode.ProjectPreferences,
+            Path = "Sources"
+        };
+
+        Assert.That(path.TryGetAbsolutePath(root, out var absolutePath), Is.True);
+        Assert.That(absolutePath, Is.EqualTo(Path.GetFullPath(Path.Combine(root, "Sources"))));
+    }
+
+    [Test]
+    public void RelativePath_EscapeOutsideRoot_IsInvalid()
+    {
+        var path = new RelativePath
+        {
+            Mode = RelativePathMode.ProjectAssets,
+            Path = "../Outside"
+        };
+
+        Assert.That(path.TryGetAbsolutePath(out _), Is.False);
     }
 
     [Test]
@@ -63,57 +98,75 @@ public sealed class TextureRecipeValidatorTests
     }
 
     [Test]
-    public void ValidateRuntime_TextureFileLayer_IsInvalid()
+    public void ValidateRuntime_TextureFileLayer_IsValid()
     {
         IgnoreUnsupportedCompute();
 
-        var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
+        var recipe = CreateRecipe(1, 1);
         var texture = new Texture2D(1, 1);
 
         recipe.RootStack.Layers.Add(new TextureFileLayer
         {
-            Source = new TextureSource
-            {
-                Kind = TextureSourceKind.RuntimeTextureReference,
-                RuntimeTexture = texture
-            }
+            Source = RuntimeSource(texture)
         });
 
-        LogAssert.Expect(LogType.Error, "TextureFileLayer is not supported at runtime.");
-
-        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.False);
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
 
         Object.DestroyImmediate(texture);
         Object.DestroyImmediate(recipe);
     }
 
     [Test]
-    public void ValidateRuntime_ChannelPackLayer_IsInvalid()
+    public void ValidateRuntime_TextureFileLayerWithoutRuntimeTexture_IsValid()
     {
         IgnoreUnsupportedCompute();
 
-        var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
-        recipe.RootStack.Layers.Add(new ChannelPackLayer());
+        var recipe = CreateRecipe(1, 1);
+        recipe.RootStack.Layers.Add(new TextureFileLayer());
 
-        LogAssert.Expect(LogType.Error, "ChannelPackLayer is not supported at runtime.");
-
-        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.False);
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
 
         Object.DestroyImmediate(recipe);
     }
 
     [Test]
-    public void ValidateRuntime_ChannelFillLayer_IsInvalid()
+    public void ValidateRuntime_TextureFileEditorSource_IsValid()
     {
         IgnoreUnsupportedCompute();
 
-        var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
-        recipe.RootStack.Layers.Add(new ChannelFillLayer());
+        var recipe = CreateRecipe(1, 1);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = new TextureSource
+            {
+                Kind = TextureSourceKind.ProjectAssetRawFile
+            }
+        });
 
-        LogAssert.Expect(LogType.Error, "ChannelFillLayer is not supported at runtime.");
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
 
-        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.False);
+        Object.DestroyImmediate(recipe);
+    }
 
+    [Test]
+    public void ValidateRuntime_TextureFileResolutionMismatch_IsValid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(2, 2);
+        var texture = new Texture2D(1, 2);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(texture)
+        });
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Object.DestroyImmediate(texture);
         Object.DestroyImmediate(recipe);
     }
 
@@ -136,7 +189,30 @@ public sealed class TextureRecipeValidatorTests
     }
 
     [Test]
-    public void ValidateRuntime_NonNoneMask_IsInvalid()
+    public void ValidateRuntime_RecipeReferenceMask_IsValid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
+        var mask = ScriptableObject.CreateInstance<TextureRecipe>();
+        mask.RootStack.Layers.Add(new SolidColorLayer());
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Mask = new StackMask
+            {
+                RecipeReference = mask
+            }
+        });
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Object.DestroyImmediate(mask);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void ValidateRuntime_RecursiveMask_IsInvalid()
     {
         IgnoreUnsupportedCompute();
 
@@ -145,12 +221,11 @@ public sealed class TextureRecipeValidatorTests
         {
             Mask = new StackMask
             {
-                Source = StackSource.InlineStack,
-                InlineStack = recipe.RootStack
+                RecipeReference = recipe
             }
         });
 
-        LogAssert.Expect(LogType.Error, "Layer masks are not supported at runtime.");
+        LogAssert.Expect(LogType.Error, "TextureRecipe mask reference cycle detected.");
 
         Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.False);
 
@@ -203,6 +278,19 @@ public sealed class TextureRecipeValidatorTests
 
         Object.DestroyImmediate(recipe);
     }
+
+    static TextureRecipe CreateRecipe(int width, int height)
+    {
+        var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
+        recipe.Output.Resolution = new Vector2Int(width, height);
+        return recipe;
+    }
+
+    static TextureSource RuntimeSource(Texture texture) => new()
+    {
+        Kind = TextureSourceKind.RuntimeTextureReference,
+        RuntimeTexture = texture
+    };
 
     static void IgnoreUnsupportedCompute()
     {
