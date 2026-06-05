@@ -629,6 +629,202 @@ public sealed class TextureRecipeEvaluatorTests
     }
 
     [Test]
+    public void Evaluate_WaterWavesLayer_ReturnsNonFlatGrayscaleRgba()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(32, 32);
+        recipe.RootStack.Layers.Add(new WaterWavesLayer
+        {
+            Seed = 12,
+            WaveCount = 8
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertGrayscaleRgba(result);
+        AssertNonFlat(result);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_WaterWavesLayer_SameSeedIsDeterministic()
+    {
+        IgnoreUnsupportedCompute();
+
+        var firstRecipe = CreateRecipe(32, 32);
+        var secondRecipe = CreateRecipe(32, 32);
+        firstRecipe.RootStack.Layers.Add(new WaterWavesLayer
+        {
+            Seed = 42,
+            WaveCount = 12
+        });
+        secondRecipe.RootStack.Layers.Add(new WaterWavesLayer
+        {
+            Seed = 42,
+            WaveCount = 12
+        });
+
+        var first = TextureRecipeEvaluator.Evaluate(firstRecipe);
+        var second = TextureRecipeEvaluator.Evaluate(secondRecipe);
+
+        Assert.That(first, Is.Not.Null);
+        Assert.That(second, Is.Not.Null);
+        AssertTexturesEqual(first, second);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(first);
+        Release(second);
+        Object.DestroyImmediate(firstRecipe);
+        Object.DestroyImmediate(secondRecipe);
+    }
+
+    [Test]
+    public void Evaluate_WaterWavesLayer_DifferentSeedsProduceDifferentOutput()
+    {
+        IgnoreUnsupportedCompute();
+
+        var firstRecipe = CreateRecipe(32, 32);
+        var secondRecipe = CreateRecipe(32, 32);
+        firstRecipe.RootStack.Layers.Add(new WaterWavesLayer { Seed = 7 });
+        secondRecipe.RootStack.Layers.Add(new WaterWavesLayer { Seed = 11 });
+
+        var first = TextureRecipeEvaluator.Evaluate(firstRecipe);
+        var second = TextureRecipeEvaluator.Evaluate(secondRecipe);
+
+        Assert.That(first, Is.Not.Null);
+        Assert.That(second, Is.Not.Null);
+        Assert.That(TexturesDiffer(first, second), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(first);
+        Release(second);
+        Object.DestroyImmediate(firstRecipe);
+        Object.DestroyImmediate(secondRecipe);
+    }
+
+    [Test]
+    public void Evaluate_WaterWavesLayer_IsContinuousAcrossTileSeams()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(64, 64);
+        recipe.RootStack.Layers.Add(new WaterWavesLayer
+        {
+            Seed = 17,
+            WaveCount = 12,
+            CycleRange = new Vector2(2f, 10f),
+            DirectionSpread = 70f,
+            Choppiness = 0.35f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertContinuousTileSeams(result);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_WaterWavesLayer_WriteMaskPreservesUntouchedChannels()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(16, 16);
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.1f, 0.2f, 0.3f, 0.4f)
+        });
+        recipe.RootStack.Layers.Add(new WaterWavesLayer
+        {
+            WriteMask = ChannelWriteMask.R
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+
+        foreach (var pixel in ReadPixels(result))
+        {
+            Assert.That(pixel.g, Is.EqualTo(0.2f).Within(0.02f));
+            Assert.That(pixel.b, Is.EqualTo(0.3f).Within(0.02f));
+            Assert.That(pixel.a, Is.EqualTo(0.4f).Within(0.02f));
+        }
+
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_WaterWavesLayer_FoamModeReturnsGrayscaleRgba()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(32, 32);
+        recipe.RootStack.Layers.Add(new WaterWavesLayer
+        {
+            OutputMode = WaterWavesOutputMode.Foam,
+            FoamThreshold = 0.55f,
+            FoamSoftness = 0.2f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertGrayscaleRgba(result);
+        AssertNonFlat(result);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_WaterWavesLayer_FoamThresholdChangesCoverage()
+    {
+        IgnoreUnsupportedCompute();
+
+        var lowThresholdRecipe = CreateRecipe(32, 32);
+        var highThresholdRecipe = CreateRecipe(32, 32);
+        lowThresholdRecipe.RootStack.Layers.Add(new WaterWavesLayer
+        {
+            OutputMode = WaterWavesOutputMode.Foam,
+            Seed = 12,
+            FoamThreshold = 0.45f,
+            FoamSoftness = 0.08f
+        });
+        highThresholdRecipe.RootStack.Layers.Add(new WaterWavesLayer
+        {
+            OutputMode = WaterWavesOutputMode.Foam,
+            Seed = 12,
+            FoamThreshold = 0.85f,
+            FoamSoftness = 0.08f
+        });
+
+        var lowThreshold = TextureRecipeEvaluator.Evaluate(lowThresholdRecipe);
+        var highThreshold = TextureRecipeEvaluator.Evaluate(highThresholdRecipe);
+
+        Assert.That(lowThreshold, Is.Not.Null);
+        Assert.That(highThreshold, Is.Not.Null);
+        Assert.That(AverageRed(lowThreshold), Is.GreaterThan(AverageRed(highThreshold) + 0.1f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(lowThreshold);
+        Release(highThreshold);
+        Object.DestroyImmediate(lowThresholdRecipe);
+        Object.DestroyImmediate(highThresholdRecipe);
+    }
+
+    [Test]
     public void Evaluate_NormalFromHeightLayer_ConstantHeightReturnsFlatNormalAndPreservesAlpha()
     {
         IgnoreUnsupportedCompute();
@@ -879,6 +1075,17 @@ public sealed class TextureRecipeEvaluatorTests
         }
 
         return false;
+    }
+
+    static float AverageRed(RenderTexture renderTexture)
+    {
+        var pixels = ReadPixels(renderTexture);
+        var total = 0f;
+
+        for (var i = 0; i < pixels.Length; i++)
+            total += pixels[i].r;
+
+        return total / pixels.Length;
     }
 
     static float PixelRed(Color[] pixels, int width, int x, int y) => pixels[y * width + x].r;

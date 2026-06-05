@@ -2,6 +2,7 @@
 #pragma kernel TextureFile
 #pragma kernel Noise
 #pragma kernel NormalFromHeight
+#pragma kernel WaterWaves
 
 #include "LayeredTextureCommon.hlsl"
 
@@ -22,6 +23,11 @@ float4 _NoiseWarpSettings;
 float4 _NoiseOutputSettings;
 uint _HeightUsage;
 float _NormalStrength;
+float4 _WaterWaveSettings;
+float4 _WaterWaveDirection;
+float4 _WaterWaveCycles;
+float4 _WaterWaveOutput;
+float4 _WaterWaveFoam;
 float _Opacity;
 uint _BlendMode;
 float4 _InputSwizzle;
@@ -286,6 +292,68 @@ float4 LT_NormalFromHeight(int2 pixel, uint2 resolution)
     return float4(normal * 0.5 + 0.5, _Previous.Load(int3(pixel, 0)).a);
 }
 
+float2 LT_WaterWaveVector(int waveIndex, float seed, float windDirection, float spread, float minCycles, float maxCycles)
+{
+    float index = (float)waveIndex;
+    float angle = windDirection + (LT_Hash21(float2(index, 13.31), seed) - 0.5) * spread;
+    float cycles = round(lerp(minCycles, maxCycles, LT_Hash21(float2(index, 41.79), seed)));
+    float2 waveVector = round(float2(cos(angle), sin(angle)) * cycles);
+
+    if (abs(waveVector.x) + abs(waveVector.y) < 0.5)
+        waveVector = float2(max(cycles, 1.0), 0.0);
+
+    return waveVector;
+}
+
+float LT_WaterWavesValue(float2 uv)
+{
+    float seed = _WaterWaveSettings.x;
+    int waveCount = clamp((int)round(_WaterWaveSettings.y), 1, 32);
+    float amplitude = max(_WaterWaveSettings.z, 0.0);
+    float phase = _WaterWaveSettings.w * 6.28318530718;
+    float windDirection = _WaterWaveDirection.x;
+    float spread = max(_WaterWaveDirection.y, 0.0);
+    float falloff = saturate(_WaterWaveDirection.z);
+    float choppiness = saturate(_WaterWaveDirection.w);
+    float minCycles = max(1.0, round(min(_WaterWaveCycles.x, _WaterWaveCycles.y)));
+    float maxCycles = max(minCycles, round(max(_WaterWaveCycles.x, _WaterWaveCycles.y)));
+    float value = 0.0;
+    float amplitudeSum = 0.0;
+
+    for (int i = 0; i < 32; i++)
+    {
+        if (i >= waveCount)
+            break;
+
+        float waveSeed = seed + i * 17.0;
+        float2 waveVector = LT_WaterWaveVector(i, seed, windDirection, spread, minCycles, maxCycles);
+        float wavePhase = LT_Hash21(float2(i, 73.17), seed) * 6.28318530718;
+        float waveAmplitude = amplitude
+            * pow(falloff, i)
+            * lerp(0.75, 1.25, LT_Hash21(float2(i, 97.53), seed));
+        float p = 6.28318530718 * dot(waveVector, uv) + phase + wavePhase;
+        float wave = sin(p) + sin(p * 2.0 + waveSeed) * choppiness * 0.35;
+
+        value += wave * waveAmplitude;
+        amplitudeSum += waveAmplitude * (1.0 + choppiness * 0.35);
+    }
+
+    value = amplitudeSum > 0.0 ? value / amplitudeSum * 0.5 + 0.5 : 0.5;
+
+    if ((uint)round(_WaterWaveOutput.w) == 1)
+    {
+        float threshold = saturate(_WaterWaveFoam.x);
+        float softness = max(_WaterWaveFoam.y, 0.0001);
+        value = smoothstep(threshold, threshold + softness, value);
+    }
+
+    if (_WaterWaveOutput.z != 0.0)
+        value = 1.0 - value;
+
+    value = (value - 0.5) * _WaterWaveOutput.x + 0.5 + _WaterWaveOutput.y;
+    return saturate(value);
+}
+
 [numthreads(8, 8, 1)]
 void SolidColor(uint3 id : SV_DispatchThreadID)
 {
@@ -369,6 +437,29 @@ void NormalFromHeight(uint3 id : SV_DispatchThreadID)
     _Result[id.xy] = LT_ApplyLayer(
         previous,
         candidate,
+        LT_LayerMask(uv),
+        _Opacity,
+        _BlendMode,
+        (uint4)_InputSwizzle,
+        _WriteMask,
+        _RawPreview);
+}
+
+[numthreads(8, 8, 1)]
+void WaterWaves(uint3 id : SV_DispatchThreadID)
+{
+    uint2 resolution = (uint2)_Resolution.xy;
+
+    if (id.x >= resolution.x || id.y >= resolution.y)
+        return;
+
+    int3 pixel = int3(id.xy, 0);
+    float2 uv = (id.xy + 0.5) / resolution;
+    float4 previous = _Previous.Load(pixel);
+    float value = LT_WaterWavesValue(uv);
+    _Result[id.xy] = LT_ApplyLayer(
+        previous,
+        value.xxxx,
         LT_LayerMask(uv),
         _Opacity,
         _BlendMode,

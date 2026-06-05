@@ -124,6 +124,20 @@ public sealed class TextureRecipeValidatorTests
     }
 
     [Test]
+    public void ValidateRuntime_WaterWavesLayer_IsValid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(1, 1);
+        recipe.RootStack.Layers.Add(new WaterWavesLayer());
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
     public void ValidateRuntime_NormalFromHeightLayer_IsValid()
     {
         IgnoreUnsupportedCompute();

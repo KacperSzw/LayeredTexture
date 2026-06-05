@@ -225,6 +225,9 @@ namespace Unmanaged.LayeredTexture.Editor
                 case NoiseLayer:
                     DrawNoiseFields(ref rect, layer);
                     break;
+                case WaterWavesLayer:
+                    DrawWaterWavesFields(ref rect, layer);
+                    break;
                 case NormalFromHeightLayer:
                     DrawNoiseRow(
                         NextLine(ref rect),
@@ -268,6 +271,7 @@ namespace Unmanaged.LayeredTexture.Editor
                 SolidColorLayer => 1,
                 TextureFileLayer => 1,
                 NoiseLayer => 6,
+                WaterWavesLayer => IsWaterWavesFoam(layer) ? 6 : 5,
                 NormalFromHeightLayer => 1,
                 RecipeReferenceLayer => 1,
                 _ => 2
@@ -347,6 +351,7 @@ namespace Unmanaged.LayeredTexture.Editor
             menu.AddItem(new GUIContent("Solid Color"), false, () => AddLayer(new SolidColorLayer()));
             menu.AddItem(new GUIContent("Texture File"), false, () => AddLayer(new TextureFileLayer()));
             menu.AddItem(new GUIContent("Noise"), false, () => AddLayer(new NoiseLayer()));
+            menu.AddItem(new GUIContent("Water Waves"), false, () => AddLayer(new WaterWavesLayer()));
             menu.AddItem(new GUIContent("Normal From Height"), false, () => AddLayer(new NormalFromHeightLayer()));
             menu.AddItem(new GUIContent("Recipe Reference"), false, () => AddLayer(new RecipeReferenceLayer()));
             menu.DropDown(buttonRect);
@@ -623,6 +628,59 @@ namespace Unmanaged.LayeredTexture.Editor
                 "Invert");
         }
 
+        static void DrawWaterWavesFields(ref Rect rect, SerializedProperty layer)
+        {
+            DrawNoiseRow(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("OutputMode"),
+                "Output",
+                layer.FindPropertyRelative("Seed"),
+                "Seed",
+                layer.FindPropertyRelative("WaveCount"),
+                "Waves");
+            DrawNoiseRow(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("WindDirection"),
+                "Direction",
+                layer.FindPropertyRelative("DirectionSpread"),
+                "Spread",
+                layer.FindPropertyRelative("Phase"),
+                "Phase");
+            DrawVector2Row(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("CycleRange"),
+                "Min Cycles",
+                "Max Cycles");
+            DrawNoiseRow(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("Amplitude"),
+                "Amplitude",
+                layer.FindPropertyRelative("AmplitudeFalloff"),
+                "Falloff",
+                layer.FindPropertyRelative("Choppiness"),
+                "Chop");
+
+            if (IsWaterWavesFoam(layer))
+                DrawNoiseRow(
+                    NextLine(ref rect),
+                    layer.FindPropertyRelative("FoamThreshold"),
+                    "Foam Threshold",
+                    layer.FindPropertyRelative("FoamSoftness"),
+                    "Foam Softness");
+
+            DrawNoiseRow(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("Contrast"),
+                "Contrast",
+                layer.FindPropertyRelative("Brightness"),
+                "Brightness",
+                layer.FindPropertyRelative("Invert"),
+                "Invert");
+        }
+
+        static bool IsWaterWavesFoam(SerializedProperty layer) =>
+            (WaterWavesOutputMode)layer.FindPropertyRelative("OutputMode").enumValueIndex == WaterWavesOutputMode.Foam;
+
         void DrawMaskRow(Rect rect, SerializedProperty mask)
         {
             if (mask == null)
@@ -751,6 +809,23 @@ namespace Unmanaged.LayeredTexture.Editor
                 offset.vector2Value = value;
         }
 
+        static void DrawVector2Row(Rect rect, SerializedProperty property, string xLabel, string yLabel)
+        {
+            const float Gap = 8f;
+            var width = (rect.width - Gap) * 0.5f;
+            var value = property.vector2Value;
+
+            EditorGUI.BeginChangeCheck();
+            value.x = DrawFloatField(new Rect(rect.x, rect.y, width, rect.height), xLabel, value.x);
+            value.y = DrawFloatField(
+                new Rect(rect.x + width + Gap, rect.y, width, rect.height),
+                yLabel,
+                value.y);
+
+            if (EditorGUI.EndChangeCheck())
+                property.vector2Value = value;
+        }
+
         static void DrawNoiseRow(
             Rect rect,
             SerializedProperty first,
@@ -841,6 +916,7 @@ namespace Unmanaged.LayeredTexture.Editor
                 SolidColorLayer => "Solid Color",
                 TextureFileLayer => "Texture File",
                 NoiseLayer => "Noise",
+                WaterWavesLayer => "Water Waves",
                 NormalFromHeightLayer => "Normal From Height",
                 RecipeReferenceLayer => "Recipe Reference",
                 _ => layer.managedReferenceValue.GetType().Name

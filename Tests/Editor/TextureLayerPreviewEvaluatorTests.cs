@@ -13,6 +13,7 @@ public sealed class TextureLayerPreviewEvaluatorTests
         AssertSourceLayer(new SolidColorLayer());
         AssertSourceLayer(new TextureFileLayer());
         AssertSourceLayer(new NoiseLayer());
+        AssertSourceLayer(new WaterWavesLayer());
         AssertSourceLayer(new RecipeReferenceLayer());
     }
 
@@ -135,6 +136,49 @@ public sealed class TextureLayerPreviewEvaluatorTests
             Seed = 9,
             Scale = new Vector2(8f, 8f),
             NoiseType = NoiseType.WorleyF1
+        });
+
+        Assert.That(result, Is.Not.Null);
+        AssertGrayscaleRgba(result);
+        AssertNonFlat(result);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void EvaluateRaw_WaterWaves_ReturnsNonFlatGrayscale()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(32, 32);
+        var result = TextureLayerPreviewEvaluator.EvaluateRaw(recipe, new WaterWavesLayer
+        {
+            Seed = 12,
+            WaveCount = 8
+        });
+
+        Assert.That(result, Is.Not.Null);
+        AssertGrayscaleRgba(result);
+        AssertNonFlat(result);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void EvaluateRaw_WaterWavesFoam_ReturnsNonFlatGrayscale()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(32, 32);
+        var result = TextureLayerPreviewEvaluator.EvaluateRaw(recipe, new WaterWavesLayer
+        {
+            OutputMode = WaterWavesOutputMode.Foam,
+            FoamThreshold = 0.55f,
+            FoamSoftness = 0.2f
         });
 
         Assert.That(result, Is.Not.Null);
