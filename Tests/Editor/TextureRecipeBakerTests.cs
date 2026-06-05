@@ -9,12 +9,25 @@ using UnityEngine.Experimental.Rendering;
 public sealed class TextureRecipeBakerTests
 {
     const string TestFolder = "Assets/LayeredTextureBakerTests";
+    readonly string externalTestFolder = Path.Combine(Path.GetTempPath(), "LayeredTextureBakerTests");
+    string previousRelativeRoot;
 
     [SetUp]
-    public void SetUp() => DeleteTestFolder();
+    public void SetUp()
+    {
+        previousRelativeRoot = LayeredTexturePreferences.RelativeRoot;
+        LayeredTexturePreferences.SetRelativeRoot(null);
+        DeleteTestFolder();
+        DeleteExternalTestFolder();
+    }
 
     [TearDown]
-    public void TearDown() => DeleteTestFolder();
+    public void TearDown()
+    {
+        DeleteTestFolder();
+        DeleteExternalTestFolder();
+        LayeredTexturePreferences.SetRelativeRoot(previousRelativeRoot);
+    }
 
     [Test]
     public void Bake_SolidColorPng_WritesFileAndAppliesImporterSettings()
@@ -75,7 +88,7 @@ public sealed class TextureRecipeBakerTests
     }
 
     [Test]
-    public void Bake_TextureFileLayerWithRelativeProjectSource_UsesSourceDirectory()
+    public void Bake_TextureFileLayerWithRelativeFileSource_UsesGlobalRelativeRoot()
     {
         IgnoreUnsupportedCompute();
 
@@ -84,11 +97,12 @@ public sealed class TextureRecipeBakerTests
         const string Path = TestFolder + "/RelativeTextureFile.png";
         CreateTextureAsset(SourcePath, new Color(0.2f, 0.6f, 0.8f, 1f));
 
+        LayeredTexturePreferences.SetRelativeRoot(FullPath(SourceFolder));
+
         var recipe = CreateRecipe(Path);
-        recipe.SourceDirectory = RelativePath.FromAssetPath(SourceFolder);
         recipe.RootStack.Layers.Add(new TextureFileLayer
         {
-            Source = ProjectSource("Source.asset")
+            Source = RelativeFileSource("Source.asset")
         });
 
         try
@@ -103,20 +117,91 @@ public sealed class TextureRecipeBakerTests
     }
 
     [Test]
-    public void Bake_TextureFileLayerWithMissingRelativeProjectSource_SkipsLayer()
+    public void Bake_TextureFileLayerWithRelativeExternalPng_UsesGlobalRelativeRoot()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/RelativeExternalTextureFile.png";
+        var sourcePath = System.IO.Path.Combine(externalTestFolder, "Source.png");
+        WriteTexturePng(sourcePath, new Color(0.2f, 0.6f, 0.8f, 1f));
+        LayeredTexturePreferences.SetRelativeRoot(externalTestFolder);
+
+        var recipe = CreateRecipe(Path);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RelativeFileSource("Source.png")
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixels(Path, new Color(0.2f, 0.6f, 0.8f, 1f));
+        }
+        finally
+        {
+            Object.DestroyImmediate(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_TextureFileLayerWithRelativeExternalTga_UsesGlobalRelativeRoot()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/RelativeExternalTgaTextureFile.png";
+        var sourcePath = System.IO.Path.Combine(externalTestFolder, "Source.tga");
+        WriteTextureTga(sourcePath, new Color32(51, 153, 204, 255));
+        LayeredTexturePreferences.SetRelativeRoot(externalTestFolder);
+
+        var recipe = CreateRecipe(Path);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RelativeFileSource("Source.tga")
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixels(Path, new Color(0.2f, 0.6f, 0.8f, 1f));
+        }
+        finally
+        {
+            Object.DestroyImmediate(recipe);
+        }
+    }
+
+    [Test]
+    public void RelativeTexturePicker_CollectRelativePaths_ReturnsSupportedFilesBelowRoot()
+    {
+        var nestedFolder = System.IO.Path.Combine(externalTestFolder, "Nested");
+        WriteTexturePng(System.IO.Path.Combine(externalTestFolder, "Albedo.png"), Color.white);
+        WriteTextureTga(System.IO.Path.Combine(nestedFolder, "Mask.tga"), new Color32(255, 255, 255, 255));
+        Directory.CreateDirectory(nestedFolder);
+        File.WriteAllText(System.IO.Path.Combine(nestedFolder, "Notes.txt"), "ignore");
+
+        var paths = RelativeTexturePickerWindow.CollectRelativePaths(externalTestFolder, null);
+
+        Assert.That(paths, Is.EquivalentTo(new[] { "Albedo.png", "Nested/Mask.tga" }));
+        Assert.That(RelativeTexturePickerWindow.CollectRelativePaths(externalTestFolder, "mask"), Is.EquivalentTo(new[] { "Nested/Mask.tga" }));
+    }
+
+    [Test]
+    public void Bake_TextureFileLayerWithMissingRelativeFileSource_SkipsLayer()
     {
         IgnoreUnsupportedCompute();
 
         const string Path = TestFolder + "/MissingRelativeTextureFile.png";
         var recipe = CreateRecipe(Path);
-        recipe.SourceDirectory = RelativePath.FromAssetPath(TestFolder + "/Sources");
+        Directory.CreateDirectory(FullPath(TestFolder + "/Sources"));
+        AssetDatabase.Refresh();
+        LayeredTexturePreferences.SetRelativeRoot(FullPath(TestFolder + "/Sources"));
         recipe.RootStack.Layers.Add(new SolidColorLayer
         {
             Color = new Color(0.6f, 0.4f, 0.2f, 1f)
         });
         recipe.RootStack.Layers.Add(new TextureFileLayer
         {
-            Source = ProjectSource("Missing.asset")
+            Source = RelativeFileSource("Missing.asset")
         });
 
         try
@@ -131,29 +216,58 @@ public sealed class TextureRecipeBakerTests
     }
 
     [Test]
-    public void Bake_RelativeProjectSourceCannotEscapeSourceDirectory()
+    public void Bake_RelativeFileSourceCannotEscapeGlobalRelativeRoot()
     {
         IgnoreUnsupportedCompute();
 
         const string SourceFolder = TestFolder + "/Sources";
         const string Path = TestFolder + "/RelativeEscape.png";
+        Directory.CreateDirectory(FullPath(SourceFolder));
         CreateTextureAsset(TestFolder + "/Outside.asset", Color.white);
 
+        LayeredTexturePreferences.SetRelativeRoot(FullPath(SourceFolder));
+
         var recipe = CreateRecipe(Path);
-        recipe.SourceDirectory = RelativePath.FromAssetPath(SourceFolder);
         recipe.RootStack.Layers.Add(new SolidColorLayer
         {
             Color = new Color(0.25f, 0.5f, 0.75f, 1f)
         });
         recipe.RootStack.Layers.Add(new TextureFileLayer
         {
-            Source = ProjectSource("../Outside.asset")
+            Source = RelativeFileSource("../Outside.asset")
         });
 
         try
         {
             Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
             AssertPngPixels(Path, new Color(0.25f, 0.5f, 0.75f, 1f));
+        }
+        finally
+        {
+            Object.DestroyImmediate(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_TextureFileLayerWithMissingGlobalRelativeRoot_SkipsLayer()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/MissingRelativeRoot.png";
+        var recipe = CreateRecipe(Path);
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.6f, 0.4f, 0.2f, 1f)
+        });
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RelativeFileSource("Source.asset")
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixels(Path, new Color(0.6f, 0.4f, 0.2f, 1f));
         }
         finally
         {
@@ -170,6 +284,36 @@ public sealed class TextureRecipeBakerTests
         {
             Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.False);
             Assert.That(error, Is.EqualTo("TextureRecipe.Output.OutputPath is missing."));
+        }
+        finally
+        {
+            Object.DestroyImmediate(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_TextureFileLayerWithAbsoluteFileSource_UsesFilePath()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string SourcePath = TestFolder + "/AbsoluteSource.asset";
+        const string Path = TestFolder + "/AbsoluteTextureFile.png";
+        CreateTextureAsset(SourcePath, new Color(0.1f, 0.3f, 0.7f, 1f));
+
+        var recipe = CreateRecipe(Path);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = new TextureSource
+            {
+                Kind = TextureSourceKind.File,
+                Path = AssetPath.Absolute(FullPath(SourcePath))
+            }
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixels(Path, new Color(0.1f, 0.3f, 0.7f, 1f));
         }
         finally
         {
@@ -218,10 +362,10 @@ public sealed class TextureRecipeBakerTests
         return recipe;
     }
 
-    static TextureSource ProjectSource(string relativePath) => new()
+    static TextureSource RelativeFileSource(string relativePath) => new()
     {
-        Kind = TextureSourceKind.ProjectAssetRawFile,
-        ProjectAssetPath = relativePath
+        Kind = TextureSourceKind.File,
+        Path = AssetPath.Relative(relativePath)
     };
 
     static void CreateTextureAsset(string assetPath, Color color)
@@ -238,6 +382,48 @@ public sealed class TextureRecipeBakerTests
         texture.Apply();
         AssetDatabase.CreateAsset(texture, assetPath);
         AssetDatabase.SaveAssets();
+    }
+
+    static void WriteTexturePng(string fullPath, Color color)
+    {
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(fullPath));
+        var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false, true);
+
+        try
+        {
+            for (var y = 0; y < texture.height; y++)
+            for (var x = 0; x < texture.width; x++)
+                texture.SetPixel(x, y, color);
+
+            texture.Apply();
+            File.WriteAllBytes(fullPath, ImageConversion.EncodeToPNG(texture));
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+        }
+    }
+
+    static void WriteTextureTga(string fullPath, Color32 color)
+    {
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(fullPath));
+        var bytes = new byte[18 + 2 * 2 * 4];
+        bytes[2] = 2;
+        bytes[12] = 2;
+        bytes[14] = 2;
+        bytes[16] = 32;
+        bytes[17] = 32;
+        var offset = 18;
+
+        for (var i = 0; i < 4; i++)
+        {
+            bytes[offset++] = color.b;
+            bytes[offset++] = color.g;
+            bytes[offset++] = color.r;
+            bytes[offset++] = color.a;
+        }
+
+        File.WriteAllBytes(fullPath, bytes);
     }
 
     static void AssertPngPixels(string path, Color expected)
@@ -283,6 +469,12 @@ public sealed class TextureRecipeBakerTests
             File.Delete(fullPath + ".meta");
 
         AssetDatabase.Refresh();
+    }
+
+    void DeleteExternalTestFolder()
+    {
+        if (Directory.Exists(externalTestFolder))
+            Directory.Delete(externalTestFolder, true);
     }
 
     static string FullPath(string assetPath)

@@ -18,10 +18,30 @@ namespace Unmanaged.LayeredTexture
             if (!SystemInfo.supportsComputeShaders)
                 return Fail("LayeredTexture requires compute shader support.");
 
-            return ValidateRecipe(recipe, new System.Collections.Generic.HashSet<TextureRecipe>());
+            return ValidateRecipe(
+                recipe,
+                recipe != null ? recipe.Output : default,
+                new System.Collections.Generic.HashSet<TextureRecipe>());
         }
 
-        static bool ValidateRecipe(TextureRecipe recipe, System.Collections.Generic.HashSet<TextureRecipe> visiting)
+        /// <summary>
+        /// Validates a recipe using output settings supplied by the caller.
+        /// </summary>
+        /// <param name="recipe">Recipe to validate.</param>
+        /// <param name="output">Output settings to use for the root recipe evaluation.</param>
+        /// <returns>True when the recipe can be evaluated at runtime.</returns>
+        public static bool ValidateRuntime(TextureRecipe recipe, OutputProfile output)
+        {
+            if (!SystemInfo.supportsComputeShaders)
+                return Fail("LayeredTexture requires compute shader support.");
+
+            return ValidateRecipe(recipe, output, new System.Collections.Generic.HashSet<TextureRecipe>());
+        }
+
+        static bool ValidateRecipe(
+            TextureRecipe recipe,
+            OutputProfile output,
+            System.Collections.Generic.HashSet<TextureRecipe> visiting)
         {
             if (recipe == null)
                 return Fail("TextureRecipe is missing.");
@@ -31,8 +51,8 @@ namespace Unmanaged.LayeredTexture
 
             try
             {
-                var valid = ValidateOutput(recipe.Output);
-                valid &= ValidateStack(recipe.RootStack, recipe.Output.Resolution, visiting);
+                var valid = ValidateOutput(output);
+                valid &= ValidateStack(recipe.RootStack, output.Resolution, visiting);
                 return valid;
             }
             finally
@@ -103,6 +123,10 @@ namespace Unmanaged.LayeredTexture
                     return TextureFileLayer.TryGetShaderKernel(out _, out _, out error)
                         ? true
                         : Fail(error);
+                case NoiseLayer:
+                    return NoiseLayer.TryGetShaderKernel(out _, out _, out error)
+                        ? true
+                        : Fail(error);
                 case RecipeReferenceLayer:
                     return Fail("RecipeReferenceLayer is not supported at runtime.");
                 default:
@@ -115,7 +139,7 @@ namespace Unmanaged.LayeredTexture
             if (mask == null || mask.RecipeReference == null)
                 return true;
 
-            return ValidateRecipe(mask.RecipeReference, visiting);
+            return ValidateRecipe(mask.RecipeReference, mask.RecipeReference.Output, visiting);
         }
 
         static bool Fail(string message)

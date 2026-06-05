@@ -8,7 +8,6 @@ namespace Unmanaged.LayeredTexture.Editor
     sealed class TextureRecipeEditor : UnityEditor.Editor
     {
         SerializedProperty output;
-        SerializedProperty sourceDirectory;
         SerializedProperty layers;
         ReorderableList layerList;
         RenderTexture previewTexture;
@@ -23,10 +22,10 @@ namespace Unmanaged.LayeredTexture.Editor
         static float SectionPadding => 5f;
         static float SectionGap => 4f;
         static float HeaderHeight => 20f;
+        static float LabelWidth => 82f;
 
         void OnEnable()
         {
-            sourceDirectory = serializedObject.FindProperty("SourceDirectory");
             output = serializedObject.FindProperty("Output");
             layers = serializedObject.FindProperty("RootStack").FindPropertyRelative("Layers");
             layerList = new ReorderableList(serializedObject, layers, true, true, true, true)
@@ -53,8 +52,6 @@ namespace Unmanaged.LayeredTexture.Editor
             serializedObject.Update();
             EditorGUI.BeginChangeCheck();
 
-            DrawInput();
-            EditorGUILayout.Space(6f);
             DrawOutput();
             EditorGUILayout.Space(6f);
             layerList.DoLayoutList();
@@ -84,50 +81,6 @@ namespace Unmanaged.LayeredTexture.Editor
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("GenerateMips"));
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("SRGB"));
             }
-        }
-
-        void DrawInput()
-        {
-            EditorGUILayout.LabelField("Input", EditorStyles.boldLabel);
-
-            using (new EditorGUI.IndentLevelScope())
-                DrawSourceDirectory();
-        }
-
-        void DrawSourceDirectory()
-        {
-            var mode = sourceDirectory.FindPropertyRelative("Mode");
-            var path = sourceDirectory.FindPropertyRelative("Path");
-            var rect = EditorGUILayout.GetControlRect();
-            var buttonRect = new Rect(rect.xMax - 62f, rect.y, 62f, rect.height);
-            var modeRect = new Rect(rect.x, rect.y, 118f, rect.height);
-            var pathRect = new Rect(modeRect.xMax + 4f, rect.y, rect.width - modeRect.width - buttonRect.width - 8f, rect.height);
-
-            EditorGUI.PropertyField(modeRect, mode, GUIContent.none);
-            EditorGUI.PropertyField(pathRect, path, new GUIContent("Source Directory"));
-
-            if (!GUI.Button(buttonRect, "Browse"))
-                return;
-
-            var selectedPath = EditorUtility.OpenFolderPanel(
-                "Texture Source Directory",
-                Application.dataPath,
-                string.Empty);
-
-            if (string.IsNullOrEmpty(selectedPath))
-                return;
-
-            var pathMode = (RelativePathMode)mode.enumValueIndex;
-
-            if (!TextureRecipeEditorSourceResolver.TryMakeSourceDirectory(selectedPath, pathMode, out var relativePath))
-            {
-                EditorUtility.DisplayDialog("Invalid Source Directory", $"Choose a folder under {pathMode}.", "OK");
-                return;
-            }
-
-            mode.enumValueIndex = (int)relativePath.Mode;
-            path.stringValue = relativePath.Path;
-            bakeStatus = null;
         }
 
         void DrawOutputPath()
@@ -225,6 +178,9 @@ namespace Unmanaged.LayeredTexture.Editor
                 case TextureFileLayer:
                     DrawTextureSource(NextLine(ref rect), layer.FindPropertyRelative("Source"), "Texture");
                     break;
+                case NoiseLayer:
+                    DrawNoiseFields(ref rect, layer);
+                    break;
                 default:
                     var helpRect = NextLine(ref rect);
                     helpRect.height = LineHeight * 2f;
@@ -256,6 +212,7 @@ namespace Unmanaged.LayeredTexture.Editor
             {
                 SolidColorLayer => 1,
                 TextureFileLayer => 1,
+                NoiseLayer => 6,
                 _ => 2
             };
 
@@ -312,6 +269,7 @@ namespace Unmanaged.LayeredTexture.Editor
             var menu = new GenericMenu();
             menu.AddItem(new GUIContent("Solid Color"), false, () => AddLayer(new SolidColorLayer()));
             menu.AddItem(new GUIContent("Texture File"), false, () => AddLayer(new TextureFileLayer()));
+            menu.AddItem(new GUIContent("Noise"), false, () => AddLayer(new NoiseLayer()));
             menu.DropDown(buttonRect);
         }
 
@@ -433,18 +391,104 @@ namespace Unmanaged.LayeredTexture.Editor
             previewTexture = null;
         }
 
-        void DrawTextureSource(Rect rect, SerializedProperty source, string label) =>
-            DrawTextureSource(rect, source, new GUIContent(label));
-
-        void DrawTextureSource(Rect rect, SerializedProperty source, GUIContent label)
+        void DrawTextureSource(Rect rect, SerializedProperty source, string _)
         {
-            var currentTexture = ResolveTexture(source);
+            var kind = source.FindPropertyRelative("Kind");
+            var modeRect = new Rect(rect.x, rect.y, 84f, rect.height);
+            var contentRect = new Rect(modeRect.xMax + 4f, rect.y, rect.width - modeRect.width - 4f, rect.height);
+
+            EditorGUI.PropertyField(modeRect, kind, GUIContent.none);
+
+            if ((TextureSourceKind)kind.enumValueIndex == TextureSourceKind.File)
+            {
+                DrawTexturePathSource(contentRect, source);
+                return;
+            }
+
+            var currentTexture = source.FindPropertyRelative("RuntimeTexture").objectReferenceValue as Texture;
 
             EditorGUI.BeginChangeCheck();
-            var texture = (Texture)EditorGUI.ObjectField(rect, label, currentTexture, typeof(Texture), false);
+            var texture = (Texture)EditorGUI.ObjectField(contentRect, GUIContent.none, currentTexture, typeof(Texture), false);
 
             if (EditorGUI.EndChangeCheck())
                 AssignTextureSource(source, texture);
+        }
+
+        void DrawTexturePathSource(Rect rect, SerializedProperty source)
+        {
+            var path = ReadAssetPath(source.FindPropertyRelative("Path"));
+            var valid = TextureRecipeEditorSourceResolver.Instance.TryResolve((TextureRecipe)target, ReadTextureSource(source), out _);
+            var buttonRect = new Rect(rect.xMax - 48f, rect.y, 48f, rect.height);
+            var pathRect = new Rect(rect.x, rect.y, rect.width - 52f, rect.height);
+            var tint = valid
+                ? new Color(0.34f, 0.62f, 0.34f, EditorGUIUtility.isProSkin ? 0.22f : 0.14f)
+                : new Color(0.72f, 0.32f, 0.32f, EditorGUIUtility.isProSkin ? 0.22f : 0.14f);
+
+            EditorGUI.DrawRect(pathRect, tint);
+
+            using (new EditorGUI.DisabledScope(true))
+                EditorGUI.TextField(pathRect, path.Path ?? string.Empty);
+
+            if (GUI.Button(buttonRect, "Pick"))
+                PickRelativeTexture(source.propertyPath);
+        }
+
+        void PickRelativeTexture(string sourcePropertyPath)
+        {
+            RelativeTexturePickerWindow.Show(relativePath =>
+            {
+                serializedObject.Update();
+                var source = serializedObject.FindProperty(sourcePropertyPath);
+                AssignTextureSource(source, AssetPath.Relative(relativePath));
+                serializedObject.ApplyModifiedProperties();
+                MarkPreviewDirty();
+            });
+        }
+
+        static void DrawNoiseFields(ref Rect rect, SerializedProperty layer)
+        {
+            DrawLabeledPair(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("NoiseType"),
+                "Type",
+                layer.FindPropertyRelative("Fractal"),
+                "Fractal");
+            DrawLabeledPair(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("Seed"),
+                "Seed",
+                layer.FindPropertyRelative("Scale"),
+                "Scale");
+            DrawLabeledPair(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("Offset"),
+                "Offset",
+                layer.FindPropertyRelative("Rotation"),
+                "Rotation");
+            DrawLabeledTriple(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("Octaves"),
+                "Oct",
+                layer.FindPropertyRelative("Lacunarity"),
+                "Lacunarity",
+                layer.FindPropertyRelative("Gain"),
+                "Gain");
+            DrawLabeledTriple(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("WarpStrength"),
+                "Warp",
+                layer.FindPropertyRelative("WarpScale"),
+                "Scale",
+                layer.FindPropertyRelative("WarpOctaves"),
+                "Oct");
+            DrawLabeledTriple(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("Contrast"),
+                "Contrast",
+                layer.FindPropertyRelative("Brightness"),
+                "Brightness",
+                layer.FindPropertyRelative("Invert"),
+                "Invert");
         }
 
         void DrawMaskRow(Rect rect, SerializedProperty mask)
@@ -485,16 +529,10 @@ namespace Unmanaged.LayeredTexture.Editor
         void AssignTextureSource(SerializedProperty source, Texture texture)
         {
             var kind = source.FindPropertyRelative("Kind");
-            var projectGuid = source.FindPropertyRelative("ProjectAssetGuid");
-            var projectPath = source.FindPropertyRelative("ProjectAssetPath");
-            var externalRootId = source.FindPropertyRelative("ExternalRootId");
-            var externalRelativePath = source.FindPropertyRelative("ExternalRelativePath");
+            var path = source.FindPropertyRelative("Path");
             var runtimeTexture = source.FindPropertyRelative("RuntimeTexture");
 
-            projectGuid.stringValue = null;
-            projectPath.stringValue = null;
-            externalRootId.stringValue = null;
-            externalRelativePath.stringValue = null;
+            WriteAssetPath(path, default);
             runtimeTexture.objectReferenceValue = null;
 
             if (texture == null)
@@ -506,11 +544,17 @@ namespace Unmanaged.LayeredTexture.Editor
             var assetPath = AssetDatabase.GetAssetPath(texture);
 
             if (!string.IsNullOrEmpty(assetPath)
-                && TextureRecipeEditorSourceResolver.TryMakeSourceRelativePath((TextureRecipe)target, assetPath, out var relativePath))
+                && (TextureRecipeEditorSourceResolver.TryMakeSourcePath(
+                        assetPath,
+                        AssetPathMode.Relative,
+                        out var sourcePath)
+                    || TextureRecipeEditorSourceResolver.TryMakeSourcePath(
+                        assetPath,
+                        AssetPathMode.Absolute,
+                        out sourcePath)))
             {
-                kind.enumValueIndex = (int)TextureSourceKind.ProjectAssetRawFile;
-                projectGuid.stringValue = AssetDatabase.AssetPathToGUID(assetPath);
-                projectPath.stringValue = relativePath;
+                kind.enumValueIndex = (int)TextureSourceKind.File;
+                WriteAssetPath(path, sourcePath);
                 return;
             }
 
@@ -518,21 +562,76 @@ namespace Unmanaged.LayeredTexture.Editor
             runtimeTexture.objectReferenceValue = texture;
         }
 
+        static void AssignTextureSource(SerializedProperty source, AssetPath assetPath)
+        {
+            source.FindPropertyRelative("Kind").enumValueIndex = (int)TextureSourceKind.File;
+            WriteAssetPath(source.FindPropertyRelative("Path"), assetPath);
+            source.FindPropertyRelative("RuntimeTexture").objectReferenceValue = null;
+        }
+
         static TextureSource ReadTextureSource(SerializedProperty source) => new()
         {
             Kind = (TextureSourceKind)source.FindPropertyRelative("Kind").enumValueIndex,
-            ProjectAssetGuid = source.FindPropertyRelative("ProjectAssetGuid").stringValue,
-            ProjectAssetPath = source.FindPropertyRelative("ProjectAssetPath").stringValue,
-            ExternalRootId = source.FindPropertyRelative("ExternalRootId").stringValue,
-            ExternalRelativePath = source.FindPropertyRelative("ExternalRelativePath").stringValue,
+            Path = ReadAssetPath(source.FindPropertyRelative("Path")),
             RuntimeTexture = source.FindPropertyRelative("RuntimeTexture").objectReferenceValue as Texture
         };
+
+        static AssetPath ReadAssetPath(SerializedProperty path) => new()
+        {
+            Mode = (AssetPathMode)path.FindPropertyRelative("Mode").enumValueIndex,
+            Path = path.FindPropertyRelative("Path").stringValue
+        };
+
+        static void WriteAssetPath(SerializedProperty path, AssetPath assetPath)
+        {
+            path.FindPropertyRelative("Mode").enumValueIndex = (int)assetPath.Mode;
+            path.FindPropertyRelative("Path").stringValue = assetPath.Path;
+        }
 
         static Rect NextLine(ref Rect rect)
         {
             var line = new Rect(rect.x, rect.y, rect.width, LineHeight);
             rect.y += LineHeight + Spacing;
             return line;
+        }
+
+        static void DrawLabeledPair(
+            Rect rect,
+            SerializedProperty first,
+            string firstLabel,
+            SerializedProperty second,
+            string secondLabel)
+        {
+            const float Gap = 8f;
+            var width = (rect.width - Gap) * 0.5f;
+            DrawLabeledField(new Rect(rect.x, rect.y, width, rect.height), first, firstLabel);
+            DrawLabeledField(new Rect(rect.x + width + Gap, rect.y, width, rect.height), second, secondLabel);
+        }
+
+        static void DrawLabeledTriple(
+            Rect rect,
+            SerializedProperty first,
+            string firstLabel,
+            SerializedProperty second,
+            string secondLabel,
+            SerializedProperty third,
+            string thirdLabel)
+        {
+            const float Gap = 8f;
+            var width = (rect.width - Gap * 2f) / 3f;
+            DrawLabeledField(new Rect(rect.x, rect.y, width, rect.height), first, firstLabel);
+            DrawLabeledField(new Rect(rect.x + width + Gap, rect.y, width, rect.height), second, secondLabel);
+            DrawLabeledField(new Rect(rect.x + (width + Gap) * 2f, rect.y, width, rect.height), third, thirdLabel);
+        }
+
+        static void DrawLabeledField(Rect rect, SerializedProperty property, string label)
+        {
+            var labelWidth = Mathf.Min(LabelWidth, rect.width * 0.45f);
+            var labelRect = new Rect(rect.x, rect.y, labelWidth, rect.height);
+            var fieldRect = new Rect(labelRect.xMax + 3f, rect.y, rect.width - labelWidth - 3f, rect.height);
+
+            EditorGUI.LabelField(labelRect, label);
+            EditorGUI.PropertyField(fieldRect, property, GUIContent.none);
         }
 
         static Rect Inset(Rect rect, float x, float y) =>
@@ -544,6 +643,7 @@ namespace Unmanaged.LayeredTexture.Editor
             {
                 SolidColorLayer => "Solid Color",
                 TextureFileLayer => "Texture File",
+                NoiseLayer => "Noise",
                 RecipeReferenceLayer => "Recipe Reference",
                 _ => layer.managedReferenceValue.GetType().Name
             };

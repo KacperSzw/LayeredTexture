@@ -42,7 +42,7 @@ namespace Unmanaged.LayeredTexture.Editor
                     return false;
                 }
 
-                texture = ReadBack(renderTexture, recipe.Output.ExportFormat);
+                texture = LayeredTextureBakeUtility.ReadBack(renderTexture, TextureFormatFor(recipe.Output.ExportFormat));
                 var bytes = Encode(texture, recipe.Output.ExportFormat);
                 Directory.CreateDirectory(Path.GetDirectoryName(fullPath));
                 File.WriteAllBytes(fullPath, bytes);
@@ -57,7 +57,7 @@ namespace Unmanaged.LayeredTexture.Editor
             }
             finally
             {
-                Release(renderTexture);
+                LayeredTextureBakeUtility.Release(renderTexture);
 
                 if (texture != null)
                     UnityEngine.Object.DestroyImmediate(texture);
@@ -78,76 +78,19 @@ namespace Unmanaged.LayeredTexture.Editor
                 _ => null
             };
 
-        static bool TryGetOutputPath(OutputProfile output, out string assetPath, out string fullPath, out string error)
-        {
-            assetPath = null;
-            fullPath = null;
-            error = null;
+        static bool TryGetOutputPath(OutputProfile output, out string assetPath, out string fullPath, out string error) =>
+            LayeredTextureBakeUtility.TryGetOutputPath(
+                output.OutputPath,
+                "TextureRecipe.Output.OutputPath",
+                ExtensionFor(output.ExportFormat),
+                output.ExportFormat.ToString(),
+                $"TextureRecipe.Output.ExportFormat is unsupported: {output.ExportFormat}.",
+                out assetPath,
+                out fullPath,
+                out error);
 
-            if (string.IsNullOrWhiteSpace(output.OutputPath))
-            {
-                error = "TextureRecipe.Output.OutputPath is missing.";
-                return false;
-            }
-
-            assetPath = output.OutputPath.Replace('\\', '/');
-
-            if (Path.IsPathRooted(assetPath) || !assetPath.StartsWith("Assets/", StringComparison.Ordinal))
-            {
-                error = "TextureRecipe.Output.OutputPath must be under Assets/.";
-                return false;
-            }
-
-            var expectedExtension = ExtensionFor(output.ExportFormat);
-
-            if (expectedExtension == null)
-            {
-                error = $"TextureRecipe.Output.ExportFormat is unsupported: {output.ExportFormat}.";
-                return false;
-            }
-
-            var actualExtension = Path.GetExtension(assetPath);
-
-            if (!string.Equals(actualExtension, expectedExtension, StringComparison.OrdinalIgnoreCase))
-            {
-                error = $"TextureRecipe.Output.OutputPath extension must be {expectedExtension} for {output.ExportFormat}.";
-                return false;
-            }
-
-            var projectRoot = Directory.GetParent(Application.dataPath).FullName;
-            var assetsRoot = Path.GetFullPath(Application.dataPath);
-            fullPath = Path.GetFullPath(Path.Combine(projectRoot, assetPath));
-
-            if (!fullPath.StartsWith(assetsRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-            {
-                error = "TextureRecipe.Output.OutputPath must be under Assets/.";
-                return false;
-            }
-
-            return true;
-        }
-
-        static Texture2D ReadBack(RenderTexture renderTexture, ExportFileFormat format)
-        {
-            var textureFormat = format == ExportFileFormat.EXR
-                ? TextureFormat.RGBAFloat
-                : TextureFormat.RGBA32;
-            var texture = new Texture2D(renderTexture.width, renderTexture.height, textureFormat, false, true);
-            var active = RenderTexture.active;
-
-            try
-            {
-                RenderTexture.active = renderTexture;
-                texture.ReadPixels(new Rect(0, 0, renderTexture.width, renderTexture.height), 0, 0);
-                texture.Apply(false, false);
-            }
-            finally
-            {
-                RenderTexture.active = active;
-            }
-
-            return texture;
-        }
+        static TextureFormat TextureFormatFor(ExportFileFormat format) =>
+            format == ExportFileFormat.EXR ? TextureFormat.RGBAFloat : TextureFormat.RGBA32;
 
         static byte[] Encode(Texture2D texture, ExportFileFormat format) =>
             format switch
@@ -169,15 +112,6 @@ namespace Unmanaged.LayeredTexture.Editor
             importer.textureCompression = TextureImporterCompression.Uncompressed;
             importer.isReadable = false;
             importer.SaveAndReimport();
-        }
-
-        static void Release(RenderTexture texture)
-        {
-            if (texture == null)
-                return;
-
-            texture.Release();
-            UnityEngine.Object.DestroyImmediate(texture);
         }
     }
 }

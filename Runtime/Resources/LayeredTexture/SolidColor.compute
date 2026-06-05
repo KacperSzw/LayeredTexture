@@ -1,5 +1,6 @@
 #pragma kernel SolidColor
 #pragma kernel TextureFile
+#pragma kernel Noise
 
 #include "LayeredTextureCommon.hlsl"
 
@@ -12,6 +13,11 @@ SamplerState sampler_Mask;
 
 float4 _Resolution;
 float4 _Color;
+float4 _NoiseSettings;
+float4 _NoiseTransform;
+float4 _NoiseFractalSettings;
+float4 _NoiseWarpSettings;
+float4 _NoiseOutputSettings;
 float _Opacity;
 uint _BlendMode;
 float4 _InputSwizzle;
@@ -27,6 +33,212 @@ float LT_LayerMask(float2 uv)
         return 1.0;
 
     return LT_MaskValue(_Mask.SampleLevel(sampler_Mask, uv, 0), _MaskUsage, _MaskInvert, _MaskOpacity);
+}
+
+float LT_Hash21(float2 p, float seed)
+{
+    p = frac(p * float2(123.34, 345.45));
+    p += dot(p, p + 34.345 + seed * 0.013);
+    return frac(p.x * p.y);
+}
+
+float2 LT_Hash22(float2 p, float seed)
+{
+    float3 p3 = frac(float3(p.xyx) * float3(443.897, 441.423, 437.195));
+    p3 += dot(p3, p3.yzx + 19.19 + seed * 0.017);
+    return frac((p3.xx + p3.yz) * p3.zy);
+}
+
+float LT_Period(float value)
+{
+    return max(round(max(value, 1.0)), 1.0);
+}
+
+float2 LT_WrapCell(float2 cell, float2 period)
+{
+    return cell - floor(cell / period) * period;
+}
+
+float LT_ValueNoise(float2 p, float seed, float2 period)
+{
+    float2 i = floor(p);
+    float2 f = frac(p);
+    float2 u = f * f * (3.0 - 2.0 * f);
+    float a = LT_Hash21(LT_WrapCell(i, period), seed);
+    float b = LT_Hash21(LT_WrapCell(i + float2(1.0, 0.0), period), seed);
+    float c = LT_Hash21(LT_WrapCell(i + float2(0.0, 1.0), period), seed);
+    float d = LT_Hash21(LT_WrapCell(i + 1.0, period), seed);
+    return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
+}
+
+float2 LT_GradientVector(float2 p, float seed, float2 period)
+{
+    p = LT_WrapCell(p, period);
+    float angle = LT_Hash21(p, seed) * 6.28318530718 + _NoiseTransform.y;
+    return float2(cos(angle), sin(angle));
+}
+
+float LT_GradientNoise(float2 p, float seed, float2 period)
+{
+    float2 i = floor(p);
+    float2 f = frac(p);
+    float2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    float a = dot(LT_GradientVector(i, seed, period), f);
+    float b = dot(LT_GradientVector(i + float2(1.0, 0.0), seed, period), f - float2(1.0, 0.0));
+    float c = dot(LT_GradientVector(i + float2(0.0, 1.0), seed, period), f - float2(0.0, 1.0));
+    float d = dot(LT_GradientVector(i + 1.0, seed, period), f - 1.0);
+    return saturate(lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y) * 0.7 + 0.5);
+}
+
+float LT_SimplexNoise(float2 p, float seed, float2 period)
+{
+    return LT_GradientNoise(p, seed + 17.0, period);
+}
+
+float3 LT_WorleyDistances(float2 p, float seed, float2 period)
+{
+    float2 cell = floor(p);
+    float f1 = 8.0;
+    float f2 = 8.0;
+
+    for (int y = -2; y <= 2; y++)
+    for (int x = -2; x <= 2; x++)
+    {
+        float2 neighbor = cell + float2(x, y);
+        float2 featurePoint = neighbor + LT_Hash22(LT_WrapCell(neighbor, period), seed);
+        float distanceValue = length(featurePoint - p);
+
+        if (distanceValue < f1)
+        {
+            f2 = f1;
+            f1 = distanceValue;
+        }
+        else if (distanceValue < f2)
+        {
+            f2 = distanceValue;
+        }
+    }
+
+    return float3(saturate(f1), saturate(f2), saturate(f2 - f1));
+}
+
+float LT_BaseNoise(uint type, float2 p, float seed, float2 period)
+{
+    if (type == 0)
+        return LT_ValueNoise(p, seed, period);
+
+    if (type == 2)
+        return LT_SimplexNoise(p, seed, period);
+
+    if (type >= 3)
+    {
+        float3 worley = LT_WorleyDistances(p, seed, period);
+
+        if (type == 4)
+            return worley.y;
+
+        if (type == 5)
+            return worley.z;
+
+        return worley.x;
+    }
+
+    return LT_GradientNoise(p, seed, period);
+}
+
+float LT_FractalNoise(uint type, uint fractal, float2 p, float seed, float2 basePeriod)
+{
+    float result = LT_BaseNoise(type, p, seed, basePeriod);
+
+    if (fractal == 0)
+        return result;
+
+    int octaves = clamp((int)round(_NoiseFractalSettings.x), 1, 8);
+    float lacunarity = LT_Period(_NoiseFractalSettings.y);
+    float gain = saturate(_NoiseFractalSettings.z);
+    float amplitude = 1.0;
+    float amplitudeSum = 0.0;
+    float valueSum = 0.0;
+    float frequency = 1.0;
+
+    for (int octave = 0; octave < 8; octave++)
+    {
+        if (octave >= octaves)
+            break;
+
+        float value = LT_BaseNoise(type, p * frequency, seed + octave * 29.0, basePeriod * frequency);
+        float centered = value * 2.0 - 1.0;
+
+        if (fractal == 2)
+            value = 1.0 - abs(centered);
+        else if (fractal == 3)
+            value = abs(centered);
+        else if (fractal == 4)
+            value = abs(centered) * 0.5 + 0.5;
+
+        valueSum += value * amplitude;
+        amplitudeSum += amplitude;
+        frequency *= lacunarity;
+        amplitude *= gain;
+    }
+
+    result = amplitudeSum > 0.0 ? saturate(valueSum / amplitudeSum) : 0.0;
+    return result;
+}
+
+float LT_WarpNoise(float2 p, float seed, float2 basePeriod, float baseFrequency)
+{
+    int octaves = clamp((int)round(_NoiseWarpSettings.z), 1, 8);
+    float value = 0.0;
+    float amplitude = 1.0;
+    float amplitudeSum = 0.0;
+    float frequency = baseFrequency;
+
+    for (int octave = 0; octave < 8; octave++)
+    {
+        if (octave >= octaves)
+            break;
+
+        value += LT_GradientNoise(p * frequency, seed + octave * 31.0, basePeriod * frequency) * amplitude;
+        amplitudeSum += amplitude;
+        frequency *= 2.0;
+        amplitude *= 0.5;
+    }
+
+    return amplitudeSum > 0.0 ? value / amplitudeSum : 0.0;
+}
+
+float2 LT_NoisePosition(float2 uv, float basePeriod)
+{
+    return uv * basePeriod + _NoiseTransform.zw;
+}
+
+float LT_NoiseValue(float2 uv)
+{
+    uint type = (uint)round(_NoiseSettings.x);
+    uint fractal = (uint)round(_NoiseSettings.y);
+    float seed = _NoiseSettings.z;
+    float basePeriod = LT_Period(_NoiseTransform.x);
+    float2 period = basePeriod.xx;
+    float2 p = LT_NoisePosition(uv, basePeriod);
+    float warpStrength = _NoiseWarpSettings.x;
+
+    if (abs(warpStrength) > 0.0001)
+    {
+        float warpScale = LT_Period(_NoiseWarpSettings.y);
+        float2 warp = float2(
+            LT_WarpNoise(p + 17.13, seed + 101.0, period, warpScale),
+            LT_WarpNoise(p + 63.71, seed + 211.0, period, warpScale)) * 2.0 - 1.0;
+        p += warp * warpStrength;
+    }
+
+    float value = LT_FractalNoise(type, fractal, p, seed, period);
+
+    if (_NoiseSettings.w != 0.0)
+        value = 1.0 - value;
+
+    value = (value - 0.5) * _NoiseOutputSettings.x + 0.5 + _NoiseOutputSettings.y;
+    return saturate(value);
 }
 
 [numthreads(8, 8, 1)]
@@ -65,6 +277,28 @@ void TextureFile(uint3 id : SV_DispatchThreadID)
     _Result[id.xy] = LT_ApplyLayer(
         previous,
         candidate,
+        LT_LayerMask(uv),
+        _Opacity,
+        _BlendMode,
+        (uint4)_InputSwizzle,
+        _WriteMask);
+}
+
+[numthreads(8, 8, 1)]
+void Noise(uint3 id : SV_DispatchThreadID)
+{
+    uint2 resolution = (uint2)_Resolution.xy;
+
+    if (id.x >= resolution.x || id.y >= resolution.y)
+        return;
+
+    int3 pixel = int3(id.xy, 0);
+    float2 uv = (id.xy + 0.5) / resolution;
+    float4 previous = _Previous.Load(pixel);
+    float value = LT_NoiseValue(uv);
+    _Result[id.xy] = LT_ApplyLayer(
+        previous,
+        value.xxxx,
         LT_LayerMask(uv),
         _Opacity,
         _BlendMode,

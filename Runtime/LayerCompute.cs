@@ -7,6 +7,7 @@ namespace Unmanaged.LayeredTexture
     {
         internal const string SolidColorKernel = "SolidColor";
         internal const string TextureFileKernel = "TextureFile";
+        internal const string NoiseKernel = "Noise";
 
         const string ShaderPath = "LayeredTexture/SolidColor";
 
@@ -14,6 +15,11 @@ namespace Unmanaged.LayeredTexture
 
         internal static readonly int SourceId = Shader.PropertyToID("_Source");
         internal static readonly int ColorId = Shader.PropertyToID("_Color");
+        internal static readonly int NoiseSettingsId = Shader.PropertyToID("_NoiseSettings");
+        internal static readonly int NoiseTransformId = Shader.PropertyToID("_NoiseTransform");
+        internal static readonly int NoiseFractalSettingsId = Shader.PropertyToID("_NoiseFractalSettings");
+        internal static readonly int NoiseWarpSettingsId = Shader.PropertyToID("_NoiseWarpSettings");
+        internal static readonly int NoiseOutputSettingsId = Shader.PropertyToID("_NoiseOutputSettings");
 
         static readonly int ResultId = Shader.PropertyToID("_Result");
         static readonly int PreviousId = Shader.PropertyToID("_Previous");

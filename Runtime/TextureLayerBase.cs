@@ -85,24 +85,9 @@ namespace Unmanaged.LayeredTexture
         public TextureSourceKind Kind;
 
         /// <summary>
-        /// Asset GUID captured for project asset sources.
+        /// File path used by file texture sources.
         /// </summary>
-        public string ProjectAssetGuid;
-
-        /// <summary>
-        /// Path relative to TextureRecipe.SourceDirectory for ProjectAssetRawFile sources.
-        /// </summary>
-        public string ProjectAssetPath;
-
-        /// <summary>
-        /// External root identifier reserved for external-root-relative sources.
-        /// </summary>
-        public string ExternalRootId;
-
-        /// <summary>
-        /// Path relative to ExternalRootId for external-root-relative sources.
-        /// </summary>
-        public string ExternalRelativePath;
+        public AssetPath Path;
 
         /// <summary>
         /// Direct runtime-safe Unity texture reference.
@@ -189,8 +174,7 @@ namespace Unmanaged.LayeredTexture
     public enum TextureSourceKind
     {
         RuntimeTextureReference,
-        ProjectAssetRawFile,
-        ExternalRootRelative
+        File
     }
 
     /// <summary>

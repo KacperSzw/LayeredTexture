@@ -12,11 +12,6 @@ namespace Unmanaged.LayeredTexture
     public sealed class TextureRecipe : ScriptableObject
     {
         /// <summary>
-        /// Directory used to resolve ProjectAssetRawFile texture sources.
-        /// </summary>
-        public RelativePath SourceDirectory = RelativePath.ProjectPreferences;
-
-        /// <summary>
         /// Ordered root layer stack evaluated from top to bottom.
         /// </summary>
         public LayerStack RootStack = new();

@@ -379,6 +379,179 @@ public sealed class TextureRecipeEvaluatorTests
     }
 
     [Test]
+    public void Evaluate_NoiseLayer_ReturnsGrayscaleRgba()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(8, 8);
+        recipe.RootStack.Layers.Add(new NoiseLayer());
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertGrayscaleRgba(result);
+        AssertNonFlat(result);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_NoiseLayer_SameSeedIsDeterministic()
+    {
+        IgnoreUnsupportedCompute();
+
+        var firstRecipe = CreateRecipe(8, 8);
+        var secondRecipe = CreateRecipe(8, 8);
+        firstRecipe.RootStack.Layers.Add(new NoiseLayer
+        {
+            Seed = 42,
+            NoiseType = NoiseType.WorleyF1,
+            Fractal = NoiseFractal.Ridged,
+            WarpStrength = 0.25f
+        });
+        secondRecipe.RootStack.Layers.Add(new NoiseLayer
+        {
+            Seed = 42,
+            NoiseType = NoiseType.WorleyF1,
+            Fractal = NoiseFractal.Ridged,
+            WarpStrength = 0.25f
+        });
+
+        var first = TextureRecipeEvaluator.Evaluate(firstRecipe);
+        var second = TextureRecipeEvaluator.Evaluate(secondRecipe);
+
+        Assert.That(first, Is.Not.Null);
+        Assert.That(second, Is.Not.Null);
+        AssertTexturesEqual(first, second);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(first);
+        Release(second);
+        Object.DestroyImmediate(firstRecipe);
+        Object.DestroyImmediate(secondRecipe);
+    }
+
+    [Test]
+    public void Evaluate_NoiseLayer_DifferentSeedsProduceDifferentOutput()
+    {
+        IgnoreUnsupportedCompute();
+
+        var firstRecipe = CreateRecipe(8, 8);
+        var secondRecipe = CreateRecipe(8, 8);
+        firstRecipe.RootStack.Layers.Add(new NoiseLayer { Seed = 7 });
+        secondRecipe.RootStack.Layers.Add(new NoiseLayer { Seed = 11 });
+
+        var first = TextureRecipeEvaluator.Evaluate(firstRecipe);
+        var second = TextureRecipeEvaluator.Evaluate(secondRecipe);
+
+        Assert.That(first, Is.Not.Null);
+        Assert.That(second, Is.Not.Null);
+        Assert.That(TexturesDiffer(first, second), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(first);
+        Release(second);
+        Object.DestroyImmediate(firstRecipe);
+        Object.DestroyImmediate(secondRecipe);
+    }
+
+    [TestCase(NoiseType.Value, NoiseFractal.FBM)]
+    [TestCase(NoiseType.Simplex, NoiseFractal.Turbulence)]
+    [TestCase(NoiseType.WorleyF1, NoiseFractal.Ridged)]
+    [TestCase(NoiseType.WorleyEdge, NoiseFractal.Billow)]
+    public void Evaluate_NoiseLayer_AdvancedModesProduceNonFlatOutput(NoiseType noiseType, NoiseFractal fractal)
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(8, 8);
+        recipe.RootStack.Layers.Add(new NoiseLayer
+        {
+            NoiseType = noiseType,
+            Fractal = fractal,
+            WarpStrength = 0.2f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertNonFlat(result);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [TestCase(NoiseType.Value, NoiseFractal.None, 0f)]
+    [TestCase(NoiseType.Gradient, NoiseFractal.FBM, 0f)]
+    [TestCase(NoiseType.Gradient, NoiseFractal.FBM, 0.25f)]
+    [TestCase(NoiseType.WorleyF1, NoiseFractal.Ridged, 0f)]
+    public void Evaluate_NoiseLayer_IsContinuousAcrossTileSeams(
+        NoiseType noiseType,
+        NoiseFractal fractal,
+        float warpStrength)
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(64, 64);
+        recipe.RootStack.Layers.Add(new NoiseLayer
+        {
+            NoiseType = noiseType,
+            Fractal = fractal,
+            Seed = 17,
+            Scale = 6f,
+            Octaves = 3,
+            Lacunarity = 2f,
+            Gain = 0.45f,
+            WarpStrength = warpStrength,
+            WarpScale = 3f,
+            WarpOctaves = 2
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertContinuousTileSeams(result);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_NoiseLayer_WriteMaskPreservesUntouchedChannels()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(8, 8);
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.1f, 0.2f, 0.3f, 0.4f)
+        });
+        recipe.RootStack.Layers.Add(new NoiseLayer
+        {
+            WriteMask = ChannelWriteMask.R
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+
+        foreach (var pixel in ReadPixels(result))
+        {
+            Assert.That(pixel.g, Is.EqualTo(0.2f).Within(0.02f));
+            Assert.That(pixel.b, Is.EqualTo(0.3f).Within(0.02f));
+            Assert.That(pixel.a, Is.EqualTo(0.4f).Within(0.02f));
+        }
+
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
     public void Evaluate_InvalidRecipe_ReturnsNull()
     {
         IgnoreUnsupportedCompute();
@@ -423,6 +596,13 @@ public sealed class TextureRecipeEvaluatorTests
         return recipe;
     }
 
+    static TextureRecipe CreateRecipe(int width, int height)
+    {
+        var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
+        recipe.Output.Resolution = new Vector2Int(width, height);
+        return recipe;
+    }
+
     static Texture2D CreateTexture(Color color) => CreateTexture(2, 2, color);
 
     static Texture2D CreateTexture(int width, int height, Color color)
@@ -460,6 +640,111 @@ public sealed class TextureRecipeEvaluatorTests
             for (var y = 0; y < texture.height; y++)
             for (var x = 0; x < texture.width; x++)
                 AssertColor(texture.GetPixel(x, y), expected, $"Pixel ({x}, {y})");
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+            RenderTexture.active = active;
+        }
+    }
+
+    static void AssertGrayscaleRgba(RenderTexture renderTexture)
+    {
+        foreach (var pixel in ReadPixels(renderTexture))
+        {
+            Assert.That(pixel.g, Is.EqualTo(pixel.r).Within(0.02f));
+            Assert.That(pixel.b, Is.EqualTo(pixel.r).Within(0.02f));
+            Assert.That(pixel.a, Is.EqualTo(pixel.r).Within(0.02f));
+        }
+    }
+
+    static void AssertNonFlat(RenderTexture renderTexture)
+    {
+        var pixels = ReadPixels(renderTexture);
+        var first = pixels[0].r;
+
+        for (var i = 1; i < pixels.Length; i++)
+        {
+            if (Mathf.Abs(pixels[i].r - first) > 0.02f)
+                return;
+        }
+
+        Assert.Fail("Expected non-flat noise output.");
+    }
+
+    static void AssertContinuousTileSeams(RenderTexture renderTexture)
+    {
+        var pixels = ReadPixels(renderTexture);
+        var width = renderTexture.width;
+        var height = renderTexture.height;
+        var seamX = 0f;
+        var seamY = 0f;
+        var adjacentX = 0f;
+        var adjacentY = 0f;
+
+        for (var y = 0; y < height; y++)
+        {
+            seamX += Mathf.Abs(PixelRed(pixels, width, width - 1, y) - PixelRed(pixels, width, 0, y));
+
+            for (var x = 1; x < width; x++)
+                adjacentX += Mathf.Abs(PixelRed(pixels, width, x, y) - PixelRed(pixels, width, x - 1, y));
+        }
+
+        for (var x = 0; x < width; x++)
+        {
+            seamY += Mathf.Abs(PixelRed(pixels, width, x, height - 1) - PixelRed(pixels, width, x, 0));
+
+            for (var y = 1; y < height; y++)
+                adjacentY += Mathf.Abs(PixelRed(pixels, width, x, y) - PixelRed(pixels, width, x, y - 1));
+        }
+
+        var meanSeamX = seamX / height;
+        var meanSeamY = seamY / width;
+        var meanAdjacentX = adjacentX / (height * (width - 1));
+        var meanAdjacentY = adjacentY / (width * (height - 1));
+
+        Assert.That(meanSeamX, Is.LessThanOrEqualTo(meanAdjacentX * 3f + 0.02f), "Horizontal tile seam");
+        Assert.That(meanSeamY, Is.LessThanOrEqualTo(meanAdjacentY * 3f + 0.02f), "Vertical tile seam");
+    }
+
+    static float PixelRed(Color[] pixels, int width, int x, int y) => pixels[y * width + x].r;
+
+    static void AssertTexturesEqual(RenderTexture first, RenderTexture second)
+    {
+        var firstPixels = ReadPixels(first);
+        var secondPixels = ReadPixels(second);
+
+        Assert.That(firstPixels.Length, Is.EqualTo(secondPixels.Length));
+
+        for (var i = 0; i < firstPixels.Length; i++)
+            AssertColor(firstPixels[i], secondPixels[i], $"Pixel {i}");
+    }
+
+    static bool TexturesDiffer(RenderTexture first, RenderTexture second)
+    {
+        var firstPixels = ReadPixels(first);
+        var secondPixels = ReadPixels(second);
+
+        for (var i = 0; i < firstPixels.Length; i++)
+        {
+            if (Mathf.Abs(firstPixels[i].r - secondPixels[i].r) > 0.02f)
+                return true;
+        }
+
+        return false;
+    }
+
+    static Color[] ReadPixels(RenderTexture renderTexture)
+    {
+        var active = RenderTexture.active;
+        var texture = new Texture2D(renderTexture.width, renderTexture.height, TextureFormat.RGBA32, false, true);
+
+        try
+        {
+            RenderTexture.active = renderTexture;
+            texture.ReadPixels(new Rect(0, 0, renderTexture.width, renderTexture.height), 0, 0);
+            texture.Apply();
+            return texture.GetPixels();
         }
         finally
         {

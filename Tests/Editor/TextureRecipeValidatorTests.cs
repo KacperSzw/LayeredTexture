@@ -16,8 +16,6 @@ public sealed class TextureRecipeValidatorTests
         Assert.That(recipe.Output.WorkingFormat, Is.EqualTo(GraphicsFormat.R16G16B16A16_UNorm));
         Assert.That(recipe.Output.OutputGraphicsFormat, Is.EqualTo(GraphicsFormat.R8G8B8A8_UNorm));
         Assert.That(recipe.Output.ExportFormat, Is.EqualTo(ExportFileFormat.PNG));
-        Assert.That(recipe.SourceDirectory.Mode, Is.EqualTo(RelativePathMode.ProjectPreferences));
-        Assert.That(recipe.SourceDirectory.Path, Is.Null);
         Assert.That(recipe.Output.OutputPath, Is.Null);
         Assert.That(recipe.Output.GenerateMips, Is.False);
         Assert.That(recipe.Output.SRGB, Is.False);
@@ -34,40 +32,34 @@ public sealed class TextureRecipeValidatorTests
     }
 
     [Test]
-    public void RelativePath_ProjectAssets_ResolvesAssetPath()
+    public void AssetPath_Relative_ResolvesProjectPath()
     {
-        var path = RelativePath.FromAssetPath("Assets/LayeredTexture");
+        var path = AssetPath.Relative("LayeredTexture");
 
-        Assert.That(path.TryGetAssetPath(null, out var assetPath), Is.True);
+        Assert.That(path.TryGetUnityAssetPath(Application.dataPath, out var assetPath), Is.True);
         Assert.That(assetPath, Is.EqualTo("Assets/LayeredTexture"));
-        Assert.That(path.TryGetAbsolutePath(out var absolutePath), Is.True);
+        Assert.That(path.TryGetAbsolutePath(Application.dataPath, out var absolutePath), Is.True);
         Assert.That(absolutePath, Is.EqualTo(Path.GetFullPath(Path.Combine(Application.dataPath, "LayeredTexture"))));
     }
 
     [Test]
-    public void RelativePath_ProjectPreferences_ResolvesBelowProjectPreferenceRoot()
+    public void AssetPath_Absolute_ResolvesProjectPath()
     {
-        var root = Path.Combine(Application.dataPath, "LayeredTextureRoot");
-        var path = new RelativePath
-        {
-            Mode = RelativePathMode.ProjectPreferences,
-            Path = "Sources"
-        };
+        var absolute = Path.GetFullPath(Path.Combine(Application.dataPath, "LayeredTexture"));
+        var path = AssetPath.Absolute(absolute);
 
-        Assert.That(path.TryGetAbsolutePath(root, out var absolutePath), Is.True);
-        Assert.That(absolutePath, Is.EqualTo(Path.GetFullPath(Path.Combine(root, "Sources"))));
+        Assert.That(path.TryGetUnityAssetPath(null, out var assetPath), Is.True);
+        Assert.That(assetPath, Is.EqualTo("Assets/LayeredTexture"));
+        Assert.That(path.TryGetAbsolutePath(null, out var absolutePath), Is.True);
+        Assert.That(absolutePath, Is.EqualTo(absolute));
     }
 
     [Test]
-    public void RelativePath_EscapeOutsideRoot_IsInvalid()
+    public void AssetPath_RelativeEscapeOutsideRoot_IsInvalid()
     {
-        var path = new RelativePath
-        {
-            Mode = RelativePathMode.ProjectAssets,
-            Path = "../Outside"
-        };
+        var path = AssetPath.Relative("../Outside");
 
-        Assert.That(path.TryGetAbsolutePath(out _), Is.False);
+        Assert.That(path.TryGetAbsolutePath(Application.dataPath, out _), Is.False);
     }
 
     [Test]
@@ -118,6 +110,20 @@ public sealed class TextureRecipeValidatorTests
     }
 
     [Test]
+    public void ValidateRuntime_NoiseLayer_IsValid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(1, 1);
+        recipe.RootStack.Layers.Add(new NoiseLayer());
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
     public void ValidateRuntime_TextureFileLayerWithoutRuntimeTexture_IsValid()
     {
         IgnoreUnsupportedCompute();
@@ -141,7 +147,7 @@ public sealed class TextureRecipeValidatorTests
         {
             Source = new TextureSource
             {
-                Kind = TextureSourceKind.ProjectAssetRawFile
+                Kind = TextureSourceKind.File
             }
         });
 

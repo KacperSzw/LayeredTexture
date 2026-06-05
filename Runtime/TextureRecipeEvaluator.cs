@@ -32,11 +32,38 @@ namespace Unmanaged.LayeredTexture
             if (!ValidateRuntime(recipe))
                 return null;
 
-            return EvaluateRecipe(recipe, sourceResolver, new System.Collections.Generic.HashSet<TextureRecipe>());
+            return EvaluateRecipe(
+                recipe,
+                recipe != null ? recipe.Output : default,
+                sourceResolver,
+                new System.Collections.Generic.HashSet<TextureRecipe>());
+        }
+
+        /// <summary>
+        /// Evaluates a recipe with caller-supplied output settings.
+        /// </summary>
+        /// <param name="recipe">Recipe to evaluate.</param>
+        /// <param name="output">Output settings to use for the root recipe evaluation.</param>
+        /// <param name="sourceResolver">Optional resolver for non-runtime texture sources.</param>
+        /// <returns>New render texture owned by the caller, or null when validation/evaluation fails.</returns>
+        public static RenderTexture Evaluate(
+            TextureRecipe recipe,
+            OutputProfile output,
+            ITextureSourceResolver sourceResolver)
+        {
+            if (!TextureRecipeValidator.ValidateRuntime(recipe, output))
+                return null;
+
+            return EvaluateRecipe(
+                recipe,
+                output,
+                sourceResolver,
+                new System.Collections.Generic.HashSet<TextureRecipe>());
         }
 
         static RenderTexture EvaluateRecipe(
             TextureRecipe recipe,
+            OutputProfile output,
             ITextureSourceResolver sourceResolver,
             System.Collections.Generic.HashSet<TextureRecipe> visiting)
         {
@@ -51,7 +78,7 @@ namespace Unmanaged.LayeredTexture
 
             try
             {
-                using var ctx = new BakeContext(recipe.Output, recipe, sourceResolver);
+                using var ctx = new BakeContext(output, recipe, sourceResolver);
 
                 ctx.ClearCurrent(Color.clear);
 
@@ -92,7 +119,11 @@ namespace Unmanaged.LayeredTexture
                 return true;
             }
 
-            var mask = EvaluateRecipe(stackMask.RecipeReference, sourceResolver, visiting);
+            var mask = EvaluateRecipe(
+                stackMask.RecipeReference,
+                stackMask.RecipeReference.Output,
+                sourceResolver,
+                visiting);
 
             if (mask == null)
                 return false;
