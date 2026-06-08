@@ -251,11 +251,21 @@ float LT_NoiseValue(float2 uv)
     return saturate(value);
 }
 
-int2 LT_WrapPixel(int2 pixel, uint2 resolution)
+int2 LT_WrapAdjacentPixel(int2 pixel, uint2 resolution)
 {
     int2 size = (int2)resolution;
-    pixel %= size;
-    return (pixel + size) % size;
+
+    if (pixel.x < 0)
+        pixel.x += size.x;
+    else if (pixel.x >= size.x)
+        pixel.x -= size.x;
+
+    if (pixel.y < 0)
+        pixel.y += size.y;
+    else if (pixel.y >= size.y)
+        pixel.y -= size.y;
+
+    return pixel;
 }
 
 float LT_HeightValue(float4 sample, uint usage)
@@ -277,7 +287,7 @@ float LT_HeightValue(float4 sample, uint usage)
 
 float LT_HeightAt(int2 pixel, uint2 resolution)
 {
-    return LT_HeightValue(_Previous.Load(int3(LT_WrapPixel(pixel, resolution), 0)), _HeightUsage);
+    return LT_HeightValue(_Previous.Load(int3(LT_WrapAdjacentPixel(pixel, resolution), 0)), _HeightUsage);
 }
 
 float4 LT_NormalFromHeight(int2 pixel, uint2 resolution)

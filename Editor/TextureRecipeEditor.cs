@@ -5,16 +5,21 @@ using UnityEngine;
 
 namespace Unmanaged.LayeredTexture.Editor
 {
-    [CustomEditor(typeof(TextureRecipe))]
-    sealed class TextureRecipeEditor : UnityEditor.Editor
+    sealed class TextureRecipeEditorView : System.IDisposable
     {
+        readonly TextureRecipe recipe;
+        readonly SerializedObject serializedObject;
+        readonly System.Action repaint;
         SerializedProperty output;
         SerializedProperty layers;
         ReorderableList layerList;
         RenderTexture previewTexture;
         readonly Dictionary<int, RenderTexture> layerPreviews = new();
         bool previewDirty = true;
+        bool clipLayerPreviews;
+        Rect layerPreviewScreenClipRect;
         TexturePreviewDisplayMode previewDisplayMode;
+        Vector2 editScroll;
         int previewSize;
         string previewError;
         string bakeStatus;
@@ -35,13 +40,26 @@ namespace Unmanaged.LayeredTexture.Editor
         const int MinPreviewSize = 80;
         const int MaxPreviewSize = 512;
 
-        void OnEnable()
+        internal TextureRecipeEditorView(TextureRecipe recipe, System.Action repaint)
+        {
+            this.recipe = recipe;
+            this.repaint = repaint;
+            serializedObject = new SerializedObject(recipe);
+            Initialize();
+        }
+
+        public void Dispose()
+        {
+            Undo.undoRedoPerformed -= HandleUndoRedo;
+            ReleasePreview();
+            ReleaseLayerPreviews();
+        }
+
+        void Initialize()
         {
             output = serializedObject.FindProperty("Output");
             layers = serializedObject.FindProperty("RootStack").FindPropertyRelative("Layers");
-            previewDisplayMode = (TexturePreviewDisplayMode)EditorPrefs.GetInt(
-                PreviewDisplayModeKey,
-                (int)TexturePreviewDisplayMode.RgbAlpha);
+            previewDisplayMode = LoadPreviewDisplayMode();
             previewSize = EditorPrefs.GetInt(PreviewSizeKey, 220);
             layerList = new ReorderableList(serializedObject, layers, true, true, true, true)
             {
@@ -56,21 +74,51 @@ namespace Unmanaged.LayeredTexture.Editor
             Undo.undoRedoPerformed += HandleUndoRedo;
         }
 
-        void OnDisable()
-        {
-            Undo.undoRedoPerformed -= HandleUndoRedo;
-            ReleasePreview();
-            ReleaseLayerPreviews();
-        }
-
-        public override void OnInspectorGUI()
+        internal void DrawInspector()
         {
             serializedObject.Update();
-            EditorGUI.BeginChangeCheck();
 
-            DrawOutput();
+            DrawPreview();
             EditorGUILayout.Space(6f);
+            DrawEditControls();
+        }
+
+        internal void DrawWindow(float windowHeight)
+        {
+            serializedObject.Update();
+
+            DrawPreview();
+            EditorGUILayout.Space(6f);
+            var scrollTop = GUILayoutUtility.GetLastRect().yMax;
+            var scrollHeight = Mathf.Max(0f, windowHeight - scrollTop);
+            var screenOrigin = GUIUtility.GUIToScreenPoint(Vector2.zero);
+            layerPreviewScreenClipRect = new Rect(
+                screenOrigin.x,
+                screenOrigin.y + scrollTop,
+                EditorGUIUtility.currentViewWidth,
+                scrollHeight);
+            clipLayerPreviews = true;
+
+            try
+            {
+                using (var scroll = new EditorGUILayout.ScrollViewScope(editScroll, GUILayout.ExpandHeight(true)))
+                {
+                    editScroll = scroll.scrollPosition;
+                    DrawEditControls();
+                }
+            }
+            finally
+            {
+                clipLayerPreviews = false;
+            }
+        }
+
+        void DrawEditControls()
+        {
+            EditorGUI.BeginChangeCheck();
             layerList.DoLayoutList();
+            EditorGUILayout.Space(6f);
+            DrawOutput();
 
             var changed = EditorGUI.EndChangeCheck();
             var applied = serializedObject.ApplyModifiedProperties();
@@ -80,7 +128,6 @@ namespace Unmanaged.LayeredTexture.Editor
 
             EditorGUILayout.Space(6f);
             DrawBakeControls();
-            DrawPreview();
         }
 
         void DrawOutput()
@@ -116,7 +163,7 @@ namespace Unmanaged.LayeredTexture.Editor
             var extension = TextureRecipeBaker.ExtensionFor(format)?.TrimStart('.') ?? "png";
             var selectedPath = EditorUtility.SaveFilePanelInProject(
                 "Bake TextureRecipe",
-                target.name,
+                recipe.name,
                 extension,
                 "Choose texture output path.");
 
@@ -208,7 +255,7 @@ namespace Unmanaged.LayeredTexture.Editor
 
         void DrawLayerSpecificBox(Rect rect, SerializedProperty layer)
         {
-            DrawSectionFrame(rect);
+            GUI.Box(rect, GUIContent.none, EditorStyles.helpBox);
             DrawLayerFields(Inset(rect, SectionPadding, SectionPadding), layer);
         }
 
@@ -340,11 +387,6 @@ namespace Unmanaged.LayeredTexture.Editor
             EditorGUI.DrawRect(Inset(rect, 1f, 1f), tint);
         }
 
-        static void DrawSectionFrame(Rect rect)
-        {
-            GUI.Box(rect, GUIContent.none, EditorStyles.helpBox);
-        }
-
         void ShowLayerMenu(Rect buttonRect, ReorderableList list)
         {
             var menu = new GenericMenu();
@@ -397,7 +439,8 @@ namespace Unmanaged.LayeredTexture.Editor
         {
             using (new EditorGUILayout.HorizontalScope())
             {
-                EditorGUILayout.LabelField("Preview", EditorStyles.boldLabel);
+                GUILayout.Label("Preview", EditorStyles.boldLabel, GUILayout.Width(58f));
+                GUILayout.FlexibleSpace();
                 DrawPreviewControls();
 
                 if (GUILayout.Button("Refresh", GUILayout.Width(72f)))
@@ -420,10 +463,9 @@ namespace Unmanaged.LayeredTexture.Editor
 
         void DrawPreviewControls()
         {
+            DrawPreviewModeButtons();
+
             EditorGUI.BeginChangeCheck();
-            previewDisplayMode = (TexturePreviewDisplayMode)EditorGUILayout.EnumPopup(
-                previewDisplayMode,
-                GUILayout.Width(96f));
             previewSize = EditorGUILayout.IntSlider(
                 previewSize,
                 MinPreviewSize,
@@ -433,14 +475,78 @@ namespace Unmanaged.LayeredTexture.Editor
             if (!EditorGUI.EndChangeCheck())
                 return;
 
-            EditorPrefs.SetInt(PreviewDisplayModeKey, (int)previewDisplayMode);
             EditorPrefs.SetInt(PreviewSizeKey, previewSize);
-            Repaint();
+            repaint?.Invoke();
+        }
+
+        void DrawPreviewModeButtons()
+        {
+            const float WideButtonWidth = 48f;
+            const float ButtonWidth = 28f;
+
+            DrawPreviewModeButton(TexturePreviewDisplayMode.RGB, "RGB", WideButtonWidth, EditorStyles.miniButtonLeft);
+            DrawPreviewModeButton(
+                TexturePreviewDisplayMode.RGBAlpha,
+                "RGB+A",
+                WideButtonWidth,
+                EditorStyles.miniButtonMid);
+            DrawPreviewModeButton(
+                TexturePreviewDisplayMode.RGBAChannels,
+                "RGBA",
+                WideButtonWidth,
+                EditorStyles.miniButtonMid);
+            DrawPreviewModeButton(TexturePreviewDisplayMode.R, "R", ButtonWidth, EditorStyles.miniButtonMid);
+            DrawPreviewModeButton(TexturePreviewDisplayMode.G, "G", ButtonWidth, EditorStyles.miniButtonMid);
+            DrawPreviewModeButton(TexturePreviewDisplayMode.B, "B", ButtonWidth, EditorStyles.miniButtonMid);
+            DrawPreviewModeButton(TexturePreviewDisplayMode.A, "A", ButtonWidth, EditorStyles.miniButtonRight);
+        }
+
+        void DrawPreviewModeButton(TexturePreviewDisplayMode mode, string label, float width, GUIStyle style)
+        {
+            var active = previewDisplayMode == mode;
+            var previousColor = GUI.backgroundColor;
+
+            if (active)
+                GUI.backgroundColor = Color.Lerp(
+                    previousColor,
+                    new Color(0.34f, 0.56f, 0.78f),
+                    EditorGUIUtility.isProSkin ? 0.75f : 0.45f);
+
+            if (GUILayout.Button(label, style, GUILayout.Width(width)))
+                SetPreviewMode(mode);
+
+            GUI.backgroundColor = previousColor;
+        }
+
+        void SetPreviewMode(TexturePreviewDisplayMode mode)
+        {
+            previewDisplayMode = mode;
+            EditorPrefs.SetInt(PreviewDisplayModeKey, (int)mode);
+            repaint?.Invoke();
         }
 
         void DrawLayerPreviewColumn(Rect rect, int index, TextureLayerBase layer, bool compact)
         {
             var preview = GetLayerPreview(index, layer);
+
+            if (clipLayerPreviews)
+            {
+                DrawClippedLayerPreview(rect, preview, compact);
+                return;
+            }
+
+            if (compact)
+                TexturePreviewGUI.DrawCompact(rect, preview);
+            else
+                TexturePreviewGUI.Draw(rect, preview);
+        }
+
+        void DrawClippedLayerPreview(Rect rect, Texture preview, bool compact)
+        {
+            var screenRect = ToScreenRect(rect);
+
+            if (!ContainsVertically(layerPreviewScreenClipRect, screenRect))
+                return;
 
             if (compact)
                 TexturePreviewGUI.DrawCompact(rect, preview);
@@ -452,7 +558,7 @@ namespace Unmanaged.LayeredTexture.Editor
         {
             serializedObject.ApplyModifiedProperties();
 
-            if (TextureRecipeBaker.Bake((TextureRecipe)target, out var error))
+            if (TextureRecipeBaker.Bake(recipe, out var error))
             {
                 bakeStatus = $"Baked {output.FindPropertyRelative("OutputPath").stringValue}";
                 bakeStatusType = MessageType.Info;
@@ -472,7 +578,7 @@ namespace Unmanaged.LayeredTexture.Editor
             try
             {
                 previewTexture = TextureRecipeEvaluator.Evaluate(
-                    (TextureRecipe)target,
+                    recipe,
                     TextureRecipeEditorSourceResolver.Instance);
 
                 if (previewTexture == null)
@@ -488,21 +594,21 @@ namespace Unmanaged.LayeredTexture.Editor
         {
             previewDirty = true;
             ReleaseLayerPreviews();
-            Repaint();
+            repaint?.Invoke();
         }
 
         void HandleUndoRedo() => MarkPreviewDirty();
 
         void ReleasePreview()
         {
-            ReleaseRenderTexture(previewTexture);
+            LayeredTextureBakeUtility.Release(previewTexture);
             previewTexture = null;
         }
 
         void ReleaseLayerPreviews()
         {
             foreach (var preview in layerPreviews.Values)
-                ReleaseRenderTexture(preview);
+                LayeredTextureBakeUtility.Release(preview);
 
             layerPreviews.Clear();
         }
@@ -512,18 +618,9 @@ namespace Unmanaged.LayeredTexture.Editor
             if (layerPreviews.TryGetValue(index, out var preview))
                 return preview;
 
-            preview = TextureLayerPreviewEvaluator.EvaluateRaw((TextureRecipe)target, layer);
+            preview = TextureLayerPreviewEvaluator.EvaluateRaw(recipe, layer);
             layerPreviews[index] = preview;
             return preview;
-        }
-
-        static void ReleaseRenderTexture(RenderTexture texture)
-        {
-            if (texture == null)
-                return;
-
-            texture.Release();
-            DestroyImmediate(texture);
         }
 
         void DrawTextureSource(Rect rect, SerializedProperty source, string _)
@@ -552,7 +649,7 @@ namespace Unmanaged.LayeredTexture.Editor
         void DrawTexturePathSource(Rect rect, SerializedProperty source)
         {
             var path = ReadAssetPath(source.FindPropertyRelative("Path"));
-            var valid = TextureRecipeEditorSourceResolver.Instance.TryResolve((TextureRecipe)target, ReadTextureSource(source), out _);
+            var valid = TextureRecipeEditorSourceResolver.Instance.TryResolve(recipe, ReadTextureSource(source), out _);
             var buttonRect = new Rect(rect.xMax - 48f, rect.y, 48f, rect.height);
             var pathRect = new Rect(rect.x, rect.y, rect.width - 52f, rect.height);
             var tint = valid
@@ -711,7 +808,7 @@ namespace Unmanaged.LayeredTexture.Editor
                 return source.FindPropertyRelative("RuntimeTexture").objectReferenceValue as Texture;
 
             var textureSource = ReadTextureSource(source);
-            return TextureRecipeEditorSourceResolver.Instance.TryResolve((TextureRecipe)target, textureSource, out var texture)
+            return TextureRecipeEditorSourceResolver.Instance.TryResolve(recipe, textureSource, out var texture)
                 ? texture
                 : null;
         }
@@ -829,14 +926,6 @@ namespace Unmanaged.LayeredTexture.Editor
         static void DrawNoiseRow(
             Rect rect,
             SerializedProperty first,
-            string firstLabel)
-        {
-            DrawLabeledField(rect, first, firstLabel);
-        }
-
-        static void DrawNoiseRow(
-            Rect rect,
-            SerializedProperty first,
             string firstLabel,
             SerializedProperty second,
             string secondLabel)
@@ -909,6 +998,17 @@ namespace Unmanaged.LayeredTexture.Editor
         static Rect Inset(Rect rect, float x, float y) =>
             new(rect.x + x, rect.y + y, rect.width - x * 2f, rect.height - y * 2f);
 
+        static bool ContainsVertically(Rect outer, Rect inner) =>
+            inner.yMin >= outer.yMin
+            && inner.yMax <= outer.yMax;
+
+        static Rect ToScreenRect(Rect rect)
+        {
+            var min = GUIUtility.GUIToScreenPoint(new Vector2(rect.xMin, rect.yMin));
+            var max = GUIUtility.GUIToScreenPoint(new Vector2(rect.xMax, rect.yMax));
+            return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+        }
+
         static string LayerName(SerializedProperty layer)
         {
             return layer.managedReferenceValue switch
@@ -922,11 +1022,145 @@ namespace Unmanaged.LayeredTexture.Editor
                 _ => layer.managedReferenceValue.GetType().Name
             };
         }
+
+        static TexturePreviewDisplayMode LoadPreviewDisplayMode()
+        {
+            var value = EditorPrefs.GetInt(PreviewDisplayModeKey, (int)TexturePreviewDisplayMode.RGBAlpha);
+
+            return System.Enum.IsDefined(typeof(TexturePreviewDisplayMode), value)
+                ? (TexturePreviewDisplayMode)value
+                : TexturePreviewDisplayMode.RGBAlpha;
+        }
+    }
+
+    [CustomEditor(typeof(TextureRecipe))]
+    sealed class TextureRecipeEditor : UnityEditor.Editor
+    {
+        TextureRecipeEditorView view;
+
+        void OnEnable()
+        {
+            if (target is TextureRecipe recipe)
+                view = new TextureRecipeEditorView(recipe, Repaint);
+        }
+
+        void OnDisable()
+        {
+            view?.Dispose();
+            view = null;
+        }
+
+        public override void OnInspectorGUI()
+        {
+            if (target is not TextureRecipe recipe)
+                return;
+
+            if (GUILayout.Button("Open Texture Recipe Editor", GUILayout.Height(22f)))
+                TextureRecipeEditorWindow.Open(recipe);
+
+            EditorGUILayout.Space(4f);
+            view?.DrawInspector();
+        }
+    }
+
+    sealed class TextureRecipeEditorWindow : EditorWindow
+    {
+        [SerializeField] TextureRecipe recipe;
+        TextureRecipeEditorView view;
+
+        [MenuItem("Window/Layered Texture/Texture Recipe Editor")]
+        static void OpenWindow()
+        {
+            var window = GetWindow<TextureRecipeEditorWindow>("Texture Recipe");
+
+            if (Selection.activeObject is TextureRecipe selectedRecipe)
+                window.SetRecipe(selectedRecipe);
+
+            window.Show();
+        }
+
+        internal static void Open(TextureRecipe recipe)
+        {
+            var window = GetWindow<TextureRecipeEditorWindow>("Texture Recipe");
+            window.SetRecipe(recipe);
+            window.Show();
+        }
+
+        void OnEnable()
+        {
+            if (recipe != null)
+                CreateView();
+        }
+
+        void OnDisable() => DisposeView();
+
+        void OnGUI()
+        {
+            DrawRecipeSelector();
+
+            if (recipe == null)
+            {
+                EditorGUILayout.HelpBox("Select a TextureRecipe asset.", MessageType.Info);
+                return;
+            }
+
+            view ??= new TextureRecipeEditorView(recipe, Repaint);
+            view.DrawWindow(position.height);
+        }
+
+        void DrawRecipeSelector()
+        {
+            using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
+            {
+                EditorGUI.BeginChangeCheck();
+                var selectedRecipe = (TextureRecipe)EditorGUILayout.ObjectField(
+                    recipe,
+                    typeof(TextureRecipe),
+                    false,
+                    GUILayout.MinWidth(120f));
+
+                if (EditorGUI.EndChangeCheck())
+                    SetRecipe(selectedRecipe);
+
+                using (new EditorGUI.DisabledScope(Selection.activeObject is not TextureRecipe))
+                {
+                    if (GUILayout.Button("Use Selection", EditorStyles.toolbarButton, GUILayout.Width(92f)))
+                        SetRecipe((TextureRecipe)Selection.activeObject);
+                }
+            }
+        }
+
+        void SetRecipe(TextureRecipe selectedRecipe)
+        {
+            if (recipe == selectedRecipe)
+                return;
+
+            DisposeView();
+            recipe = selectedRecipe;
+
+            if (recipe != null)
+                CreateView();
+
+            Repaint();
+        }
+
+        void CreateView() => view = new TextureRecipeEditorView(recipe, Repaint);
+
+        void DisposeView()
+        {
+            view?.Dispose();
+            view = null;
+        }
     }
 
     enum TexturePreviewDisplayMode
     {
-        RgbAlpha,
-        RGBAChannels
+        RGBAlpha = 0,
+        RGBAChannels = 1,
+        RGB = 2,
+        R = 3,
+        G = 4,
+        B = 5,
+        A = 6
     }
 }

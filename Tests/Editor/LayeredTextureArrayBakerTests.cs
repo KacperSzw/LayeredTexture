@@ -240,9 +240,9 @@ public sealed class LayeredTextureArrayBakerTests
 
         try
         {
-            LogAssert.Expect(LogType.Error, "TextureRecipe.RootStack is missing.");
             Assert.That(LayeredTextureArrayBaker.Bake(array, out var error), Is.False);
             Assert.That(error, Is.EqualTo("LayeredTextureArray.Pages[0] evaluation failed."));
+            LogAssert.NoUnexpectedReceived();
         }
         finally
         {

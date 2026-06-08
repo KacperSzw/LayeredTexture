@@ -71,10 +71,7 @@ namespace Unmanaged.LayeredTexture
                 return null;
 
             if (!visiting.Add(recipe))
-            {
-                Debug.LogError("TextureRecipe mask reference cycle detected.");
                 return null;
-            }
 
             try
             {

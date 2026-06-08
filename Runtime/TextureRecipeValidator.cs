@@ -13,15 +13,24 @@ namespace Unmanaged.LayeredTexture
         /// </summary>
         /// <param name="recipe">Recipe to validate.</param>
         /// <returns>True when the recipe can be evaluated at runtime.</returns>
-        public static bool ValidateRuntime(TextureRecipe recipe)
+        public static bool ValidateRuntime(TextureRecipe recipe) => ValidateRuntime(recipe, out _);
+
+        /// <summary>
+        /// Validates compute support, output settings, supported layers, and recursive mask references.
+        /// </summary>
+        /// <param name="recipe">Recipe to validate.</param>
+        /// <param name="error">Failure reason when validation fails.</param>
+        /// <returns>True when the recipe can be evaluated at runtime.</returns>
+        public static bool ValidateRuntime(TextureRecipe recipe, out string error)
         {
             if (!SystemInfo.supportsComputeShaders)
-                return Fail("LayeredTexture requires compute shader support.");
+                return Fail("LayeredTexture requires compute shader support.", out error);
 
             return ValidateRecipe(
                 recipe,
                 recipe != null ? recipe.Output : default,
-                new System.Collections.Generic.HashSet<TextureRecipe>());
+                new System.Collections.Generic.HashSet<TextureRecipe>(),
+                out error);
         }
 
         /// <summary>
@@ -30,29 +39,48 @@ namespace Unmanaged.LayeredTexture
         /// <param name="recipe">Recipe to validate.</param>
         /// <param name="output">Output settings to use for the root recipe evaluation.</param>
         /// <returns>True when the recipe can be evaluated at runtime.</returns>
-        public static bool ValidateRuntime(TextureRecipe recipe, OutputProfile output)
+        public static bool ValidateRuntime(TextureRecipe recipe, OutputProfile output) =>
+            ValidateRuntime(recipe, output, out _);
+
+        /// <summary>
+        /// Validates a recipe using output settings supplied by the caller.
+        /// </summary>
+        /// <param name="recipe">Recipe to validate.</param>
+        /// <param name="output">Output settings to use for the root recipe evaluation.</param>
+        /// <param name="error">Failure reason when validation fails.</param>
+        /// <returns>True when the recipe can be evaluated at runtime.</returns>
+        public static bool ValidateRuntime(TextureRecipe recipe, OutputProfile output, out string error)
         {
             if (!SystemInfo.supportsComputeShaders)
-                return Fail("LayeredTexture requires compute shader support.");
+                return Fail("LayeredTexture requires compute shader support.", out error);
 
-            return ValidateRecipe(recipe, output, new System.Collections.Generic.HashSet<TextureRecipe>());
+            return ValidateRecipe(recipe, output, new System.Collections.Generic.HashSet<TextureRecipe>(), out error);
         }
 
         static bool ValidateRecipe(
             TextureRecipe recipe,
             OutputProfile output,
-            System.Collections.Generic.HashSet<TextureRecipe> visiting)
+            System.Collections.Generic.HashSet<TextureRecipe> visiting,
+            out string error)
         {
             if (recipe == null)
-                return Fail("TextureRecipe is missing.");
+                return Fail("TextureRecipe is missing.", out error);
 
             if (!visiting.Add(recipe))
-                return Fail("TextureRecipe mask reference cycle detected.");
+                return Fail("TextureRecipe mask reference cycle detected.", out error);
 
             try
             {
-                var valid = ValidateOutput(output);
-                valid &= ValidateStack(recipe.RootStack, output.Resolution, visiting);
+                var valid = ValidateOutput(output, out error);
+
+                if (!ValidateStack(recipe.RootStack, output.Resolution, visiting, out var stackError))
+                {
+                    if (error == null)
+                        error = stackError;
+
+                    valid = false;
+                }
+
                 return valid;
             }
             finally
@@ -61,35 +89,39 @@ namespace Unmanaged.LayeredTexture
             }
         }
 
-        static bool ValidateOutput(OutputProfile output)
+        static bool ValidateOutput(OutputProfile output, out string error)
         {
-            var valid = true;
+            error = null;
 
             if (output.Resolution.x <= 0 || output.Resolution.y <= 0)
-                valid &= Fail("TextureRecipe.Output.Resolution must be positive.");
+                return Fail("TextureRecipe.Output.Resolution must be positive.", out error);
 
             if (output.WorkingFormat == GraphicsFormat.None)
-                valid &= Fail("TextureRecipe.Output.WorkingFormat is invalid.");
+                return Fail("TextureRecipe.Output.WorkingFormat is invalid.", out error);
             else if (!SystemInfo.IsFormatSupported(output.WorkingFormat, GraphicsFormatUsage.Render))
-                valid &= Fail($"TextureRecipe.Output.WorkingFormat is not renderable: {output.WorkingFormat}.");
+                return Fail($"TextureRecipe.Output.WorkingFormat is not renderable: {output.WorkingFormat}.", out error);
             else if (!SystemInfo.IsFormatSupported(output.WorkingFormat, GraphicsFormatUsage.LoadStore))
-                valid &= Fail($"TextureRecipe.Output.WorkingFormat does not support compute writes: {output.WorkingFormat}.");
+                return Fail(
+                    $"TextureRecipe.Output.WorkingFormat does not support compute writes: {output.WorkingFormat}.",
+                    out error);
 
-            return valid;
+            return true;
         }
 
         static bool ValidateStack(
             LayerStack stack,
             Vector2Int resolution,
-            System.Collections.Generic.HashSet<TextureRecipe> visiting)
+            System.Collections.Generic.HashSet<TextureRecipe> visiting,
+            out string error)
         {
             if (stack == null)
-                return Fail("TextureRecipe.RootStack is missing.");
+                return Fail("TextureRecipe.RootStack is missing.", out error);
 
             var valid = true;
+            error = null;
 
             if (stack.Layers == null)
-                return Fail("LayerStack.Layers is missing.");
+                return Fail("LayerStack.Layers is missing.", out error);
 
             for (var i = 0; i < stack.Layers.Count; i++)
             {
@@ -97,15 +129,31 @@ namespace Unmanaged.LayeredTexture
 
                 if (layer == null)
                 {
-                    valid &= Fail("LayerStack contains a missing layer.");
+                    if (error == null)
+                        error = "LayerStack contains a missing layer.";
+
+                    valid = false;
                     continue;
                 }
 
                 if (!layer.Enabled)
                     continue;
 
-                valid &= ValidateMask(layer.Mask, visiting);
-                valid &= ValidateLayer(layer, resolution, visiting);
+                if (!ValidateMask(layer.Mask, visiting, out var maskError))
+                {
+                    if (error == null)
+                        error = maskError;
+
+                    valid = false;
+                }
+
+                if (!ValidateLayer(layer, resolution, visiting, out var layerError))
+                {
+                    if (error == null)
+                        error = layerError;
+
+                    valid = false;
+                }
             }
 
             return valid;
@@ -114,60 +162,59 @@ namespace Unmanaged.LayeredTexture
         static bool ValidateLayer(
             TextureLayerBase layer,
             Vector2Int resolution,
-            System.Collections.Generic.HashSet<TextureRecipe> visiting)
+            System.Collections.Generic.HashSet<TextureRecipe> visiting,
+            out string error)
         {
             switch (layer)
             {
                 case SolidColorLayer:
-                    return SolidColorLayer.TryGetShaderKernel(out _, out _, out var error)
-                        ? true
-                        : Fail(error);
+                    return SolidColorLayer.TryGetShaderKernel(out _, out _, out error);
                 case TextureFileLayer:
-                    return TextureFileLayer.TryGetShaderKernel(out _, out _, out error)
-                        ? true
-                        : Fail(error);
+                    return TextureFileLayer.TryGetShaderKernel(out _, out _, out error);
                 case NoiseLayer:
-                    return NoiseLayer.TryGetShaderKernel(out _, out _, out error)
-                        ? true
-                        : Fail(error);
+                    return NoiseLayer.TryGetShaderKernel(out _, out _, out error);
                 case NormalFromHeightLayer:
-                    return NormalFromHeightLayer.TryGetShaderKernel(out _, out _, out error)
-                        ? true
-                        : Fail(error);
+                    return NormalFromHeightLayer.TryGetShaderKernel(out _, out _, out error);
                 case WaterWavesLayer:
-                    return WaterWavesLayer.TryGetShaderKernel(out _, out _, out error)
-                        ? true
-                        : Fail(error);
+                    return WaterWavesLayer.TryGetShaderKernel(out _, out _, out error);
                 case RecipeReferenceLayer recipeReferenceLayer:
-                    return ValidateRecipeReferenceLayer(recipeReferenceLayer, visiting);
+                    return ValidateRecipeReferenceLayer(recipeReferenceLayer, visiting, out error);
                 default:
-                    return Fail($"{layer.GetType().Name} is not supported at runtime.");
+                    return Fail($"{layer.GetType().Name} is not supported at runtime.", out error);
             }
         }
 
         static bool ValidateRecipeReferenceLayer(
             RecipeReferenceLayer layer,
-            System.Collections.Generic.HashSet<TextureRecipe> visiting)
+            System.Collections.Generic.HashSet<TextureRecipe> visiting,
+            out string error)
         {
             if (layer.Recipe == null)
+            {
+                error = null;
                 return true;
+            }
 
-            return TextureFileLayer.TryGetShaderKernel(out _, out _, out var error)
-                ? ValidateRecipe(layer.Recipe, layer.Recipe.Output, visiting)
-                : Fail(error);
+            if (!TextureFileLayer.TryGetShaderKernel(out _, out _, out error))
+                return false;
+
+            return ValidateRecipe(layer.Recipe, layer.Recipe.Output, visiting, out error);
         }
 
-        static bool ValidateMask(StackMask mask, System.Collections.Generic.HashSet<TextureRecipe> visiting)
+        static bool ValidateMask(StackMask mask, System.Collections.Generic.HashSet<TextureRecipe> visiting, out string error)
         {
             if (mask == null || mask.RecipeReference == null)
+            {
+                error = null;
                 return true;
+            }
 
-            return ValidateRecipe(mask.RecipeReference, mask.RecipeReference.Output, visiting);
+            return ValidateRecipe(mask.RecipeReference, mask.RecipeReference.Output, visiting, out error);
         }
 
-        static bool Fail(string message)
+        static bool Fail(string message, out string error)
         {
-            Debug.LogError(message);
+            error = message;
             return false;
         }
     }

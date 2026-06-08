@@ -313,9 +313,8 @@ public sealed class TextureRecipeEvaluatorTests
             }
         });
 
-        LogAssert.Expect(LogType.Error, "TextureRecipe mask reference cycle detected.");
-
         Assert.That(TextureRecipeEvaluator.Evaluate(recipe), Is.Null);
+        LogAssert.NoUnexpectedReceived();
 
         Object.DestroyImmediate(recipe);
     }
@@ -897,9 +896,8 @@ public sealed class TextureRecipeEvaluatorTests
         var recipe = CreateRecipe();
         recipe.Output.Resolution = Vector2Int.zero;
 
-        LogAssert.Expect(LogType.Error, "TextureRecipe.Output.Resolution must be positive.");
-
         Assert.That(TextureRecipeEvaluator.Evaluate(recipe), Is.Null);
+        LogAssert.NoUnexpectedReceived();
 
         Object.DestroyImmediate(recipe);
     }

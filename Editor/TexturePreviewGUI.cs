@@ -17,13 +17,30 @@ namespace Unmanaged.LayeredTexture.Editor
 
         internal static void Draw(Rect rect, Texture texture, TexturePreviewDisplayMode mode)
         {
-            if (mode == TexturePreviewDisplayMode.RGBAChannels)
+            switch (mode)
             {
-                DrawChannels(rect, texture, true, 1, 2, 3, 4);
-                return;
+                case TexturePreviewDisplayMode.RGB:
+                    DrawChannels(rect, texture, true, 0);
+                    break;
+                case TexturePreviewDisplayMode.RGBAChannels:
+                    DrawChannels(rect, texture, true, 1, 2, 3, 4);
+                    break;
+                case TexturePreviewDisplayMode.R:
+                    DrawChannels(rect, texture, true, 1);
+                    break;
+                case TexturePreviewDisplayMode.G:
+                    DrawChannels(rect, texture, true, 2);
+                    break;
+                case TexturePreviewDisplayMode.B:
+                    DrawChannels(rect, texture, true, 3);
+                    break;
+                case TexturePreviewDisplayMode.A:
+                    DrawChannels(rect, texture, true, 4);
+                    break;
+                default:
+                    DrawRgbAlpha(rect, texture, true);
+                    break;
             }
-
-            DrawRgbAlpha(rect, texture, true);
         }
 
         internal static void DrawCompact(Rect rect, Texture texture) => DrawRgbAlpha(rect, texture, false);

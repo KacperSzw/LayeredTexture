@@ -176,7 +176,6 @@ public sealed class TextureRecipeBakerTests
         var nestedFolder = System.IO.Path.Combine(externalTestFolder, "Nested");
         WriteTexturePng(System.IO.Path.Combine(externalTestFolder, "Albedo.png"), Color.white);
         WriteTextureTga(System.IO.Path.Combine(nestedFolder, "Mask.tga"), new Color32(255, 255, 255, 255));
-        Directory.CreateDirectory(nestedFolder);
         File.WriteAllText(System.IO.Path.Combine(nestedFolder, "Notes.txt"), "ignore");
 
         var paths = RelativeTexturePickerWindow.CollectRelativePaths(externalTestFolder, null);
