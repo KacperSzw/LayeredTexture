@@ -339,6 +339,27 @@ namespace Unmanaged.LayeredTexture.Editor
                 case WarpLayer:
                     DrawWarpFields(ref rect, layer);
                     break;
+                case BlurLayer:
+                    DrawBlurFields(ref rect, layer);
+                    break;
+                case TransformLayer:
+                    DrawVector2Row(
+                        NextLine(ref rect),
+                        layer.FindPropertyRelative("Offset"),
+                        "Offset X",
+                        "Offset Y");
+                    DrawVector2Row(
+                        NextLine(ref rect),
+                        layer.FindPropertyRelative("Scale"),
+                        "Scale X",
+                        "Scale Y");
+                    DrawNoiseRow(
+                        NextLine(ref rect),
+                        layer.FindPropertyRelative("Rotation"),
+                        "Rotation",
+                        layer.FindPropertyRelative("Pivot"),
+                        "Pivot");
+                    break;
                 case WaterWavesLayer:
                     DrawWaterWavesFields(ref rect, layer);
                     break;
@@ -384,6 +405,8 @@ namespace Unmanaged.LayeredTexture.Editor
                 TextureFileLayer => 1,
                 NoiseLayer => 5,
                 WarpLayer => 2,
+                BlurLayer => 1,
+                TransformLayer => 3,
                 WaterWavesLayer => IsWaterWavesFoam(layer) ? 6 : 5,
                 NormalFromHeightLayer => 1,
                 RecipeReferenceLayer => 1,
@@ -486,6 +509,8 @@ namespace Unmanaged.LayeredTexture.Editor
             menu.AddItem(new GUIContent("SRC/Water Waves"), false, () => AddLayer(new WaterWavesLayer()));
             menu.AddItem(new GUIContent("SRC/Recipe Reference"), false, () => AddLayer(new RecipeReferenceLayer()));
             menu.AddSeparator("");
+            menu.AddItem(new GUIContent("FX/Blur"), false, () => AddLayer(new BlurLayer()));
+            menu.AddItem(new GUIContent("FX/Transform"), false, () => AddLayer(new TransformLayer()));
             menu.AddItem(new GUIContent("FX/Warp"), false, () => AddLayer(new WarpLayer()));
             menu.AddItem(new GUIContent("FX/Normal From Height"), false, () => AddLayer(new NormalFromHeightLayer()));
             menu.DropDown(buttonRect);
@@ -804,6 +829,26 @@ namespace Unmanaged.LayeredTexture.Editor
             DrawLabeledField(NextLine(ref rect), layer.FindPropertyRelative("Octaves"), "Octaves");
         }
 
+        static void DrawBlurFields(ref Rect rect, SerializedProperty layer)
+        {
+            const float Gap = 8f;
+            var line = NextLine(ref rect);
+            var width = (line.width - Gap) * 0.5f;
+            var radius = layer.FindPropertyRelative("Radius");
+            var radiusMode = layer.FindPropertyRelative("RadiusMode");
+            var radiusRect = new Rect(line.x, line.y, width, line.height);
+
+            if ((BlurRadiusMode)radiusMode.enumValueIndex == BlurRadiusMode.UV)
+                radius.floatValue = EditorGUI.Slider(radiusRect, "Radius", radius.floatValue, 0f, 1f);
+            else
+                DrawLabeledField(radiusRect, radius, "Radius Px");
+
+            DrawLabeledField(
+                new Rect(line.x + width + Gap, line.y, width, line.height),
+                radiusMode,
+                "Mode");
+        }
+
         static void DrawWaterWavesFields(ref Rect rect, SerializedProperty layer)
         {
             DrawNoiseRow(
@@ -1001,6 +1046,8 @@ namespace Unmanaged.LayeredTexture.Editor
                 TextureFileLayer => "Texture File",
                 NoiseLayer => "Noise",
                 WarpLayer => "Warp",
+                BlurLayer => "Blur",
+                TransformLayer => "Transform",
                 WaterWavesLayer => "Water Waves",
                 NormalFromHeightLayer => "Normal From Height",
                 RecipeReferenceLayer => "Recipe Reference",

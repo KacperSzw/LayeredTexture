@@ -179,6 +179,11 @@ namespace Unmanaged.LayeredTexture
                     return NormalFromHeightLayer.TryGetShaderKernel(out _, out _, out error);
                 case WaterWavesLayer:
                     return WaterWavesLayer.TryGetShaderKernel(out _, out _, out error);
+                case BlurLayer:
+                    return BlurLayer.TryGetHorizontalShaderKernel(out _, out _, out error)
+                        && BlurLayer.TryGetVerticalShaderKernel(out _, out _, out error);
+                case TransformLayer:
+                    return TransformLayer.TryGetShaderKernel(out _, out _, out error);
                 case RecipeReferenceLayer recipeReferenceLayer:
                     return ValidateRecipeReferenceLayer(recipeReferenceLayer, visiting, out error);
                 default:

@@ -11,6 +11,9 @@ namespace Unmanaged.LayeredTexture
         internal const string WarpKernel = "Warp";
         internal const string NormalFromHeightKernel = "NormalFromHeight";
         internal const string WaterWavesKernel = "WaterWaves";
+        internal const string BlurHorizontalKernel = "BlurHorizontal";
+        internal const string BlurVerticalKernel = "BlurVertical";
+        internal const string TransformKernel = "Transform";
 
         const string ShaderPath = "LayeredTexture/SolidColor";
 
@@ -31,10 +34,15 @@ namespace Unmanaged.LayeredTexture
         internal static readonly int WaterWaveCyclesId = Shader.PropertyToID("_WaterWaveCycles");
         internal static readonly int WaterWaveOutputId = Shader.PropertyToID("_WaterWaveOutput");
         internal static readonly int WaterWaveFoamId = Shader.PropertyToID("_WaterWaveFoam");
+        internal static readonly int BlurCenterWeightId = Shader.PropertyToID("_BlurCenterWeight");
+        internal static readonly int BlurPairCountId = Shader.PropertyToID("_BlurPairCount");
+        internal static readonly int BlurPairsId = Shader.PropertyToID("_BlurPairs");
+        internal static readonly int TransformSettingsId = Shader.PropertyToID("_TransformSettings");
+        internal static readonly int TransformPivotRotationId = Shader.PropertyToID("_TransformPivotRotation");
 
-        static readonly int ResultId = Shader.PropertyToID("_Result");
-        static readonly int PreviousId = Shader.PropertyToID("_Previous");
-        static readonly int ResolutionId = Shader.PropertyToID("_Resolution");
+        internal static readonly int ResultId = Shader.PropertyToID("_Result");
+        internal static readonly int PreviousId = Shader.PropertyToID("_Previous");
+        internal static readonly int ResolutionId = Shader.PropertyToID("_Resolution");
         static readonly int OpacityId = Shader.PropertyToID("_Opacity");
         static readonly int BlendModeId = Shader.PropertyToID("_BlendMode");
         static readonly int InputSwizzleId = Shader.PropertyToID("_InputSwizzle");

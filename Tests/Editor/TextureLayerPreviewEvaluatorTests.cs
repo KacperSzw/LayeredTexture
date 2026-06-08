@@ -22,6 +22,8 @@ public sealed class TextureLayerPreviewEvaluatorTests
     {
         AssertProcessorLayer(new NormalFromHeightLayer());
         AssertProcessorLayer(new WarpLayer());
+        AssertProcessorLayer(new BlurLayer());
+        AssertProcessorLayer(new TransformLayer());
     }
 
     [Test]

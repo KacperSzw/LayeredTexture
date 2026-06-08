@@ -1,5 +1,4 @@
 using System;
-using UnityEngine;
 
 namespace Unmanaged.LayeredTexture
 {
@@ -42,12 +41,7 @@ namespace Unmanaged.LayeredTexture
             }
             finally
             {
-                texture.Release();
-
-                if (Application.isPlaying)
-                    UnityEngine.Object.Destroy(texture);
-                else
-                    UnityEngine.Object.DestroyImmediate(texture);
+                BakeContext.Release(texture);
             }
         }
     }

@@ -691,6 +691,238 @@ public sealed class TextureRecipeEvaluatorTests
     }
 
     [Test]
+    public void Evaluate_BlurLayer_RadiusZeroKeepsPreviousStack()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(4, 4);
+        var texture = CreateRedImpulseTexture(4, 4, 1, 1);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(texture)
+        });
+        recipe.RootStack.Layers.Add(new BlurLayer
+        {
+            RadiusMode = BlurRadiusMode.PerPixel,
+            Radius = 0f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+
+        var pixels = ReadPixels(result);
+        Assert.That(PixelRed(pixels, 4, 1, 1), Is.GreaterThan(0.95f));
+        Assert.That(PixelRed(pixels, 4, 0, 0), Is.LessThan(0.02f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(texture);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_BlurLayer_PreservesConstantColor()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(8, 8);
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.25f, 0.5f, 0.75f, 0.6f)
+        });
+        recipe.RootStack.Layers.Add(new BlurLayer
+        {
+            RadiusMode = BlurRadiusMode.PerPixel,
+            Radius = 16f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+
+        foreach (var pixel in ReadPixels(result))
+            AssertColor(pixel, new Color(0.25f, 0.5f, 0.75f, 0.6f), "Constant blur");
+
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_BlurLayer_SoftensImpulseAndWrapsAcrossSeams()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(8, 8);
+        var texture = CreateRedImpulseTexture(8, 8, 0, 0);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(texture)
+        });
+        recipe.RootStack.Layers.Add(new BlurLayer
+        {
+            RadiusMode = BlurRadiusMode.PerPixel,
+            Radius = 3f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+
+        var pixels = ReadPixels(result);
+        Assert.That(PixelRed(pixels, 8, 0, 0), Is.GreaterThan(0.02f).And.LessThan(0.95f));
+        Assert.That(PixelRed(pixels, 8, 7, 0), Is.GreaterThan(0.02f));
+        Assert.That(PixelRed(pixels, 8, 0, 7), Is.GreaterThan(0.02f));
+        Assert.That(PixelRed(pixels, 8, 4, 4), Is.LessThan(0.02f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(texture);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_BlurLayer_WriteMaskPreservesUntouchedChannels()
+    {
+        IgnoreUnsupportedCompute();
+
+        var baselineRecipe = CreateRecipe(8, 8);
+        var blurredRecipe = CreateRecipe(8, 8);
+        var texture = CreatePatternTexture(8, 8);
+        baselineRecipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(texture)
+        });
+        blurredRecipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(texture)
+        });
+        blurredRecipe.RootStack.Layers.Add(new BlurLayer
+        {
+            RadiusMode = BlurRadiusMode.PerPixel,
+            Radius = 2f,
+            WriteMask = ChannelWriteMask.R
+        });
+
+        var baseline = TextureRecipeEvaluator.Evaluate(baselineRecipe);
+        var blurred = TextureRecipeEvaluator.Evaluate(blurredRecipe);
+
+        Assert.That(baseline, Is.Not.Null);
+        Assert.That(blurred, Is.Not.Null);
+
+        var baselinePixels = ReadPixels(baseline);
+        var blurredPixels = ReadPixels(blurred);
+
+        for (var i = 0; i < baselinePixels.Length; i++)
+        {
+            Assert.That(blurredPixels[i].g, Is.EqualTo(baselinePixels[i].g).Within(0.02f), $"Pixel {i} green");
+            Assert.That(blurredPixels[i].b, Is.EqualTo(baselinePixels[i].b).Within(0.02f), $"Pixel {i} blue");
+            Assert.That(blurredPixels[i].a, Is.EqualTo(baselinePixels[i].a).Within(0.02f), $"Pixel {i} alpha");
+        }
+
+        Assert.That(TexturesDiffer(baseline, blurred), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(baseline);
+        Release(blurred);
+        Object.DestroyImmediate(texture);
+        Object.DestroyImmediate(baselineRecipe);
+        Object.DestroyImmediate(blurredRecipe);
+    }
+
+    [Test]
+    public void Evaluate_TransformLayer_OffsetWrapsAcrossSeams()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(4, 1);
+        var texture = CreateRedImpulseTexture(4, 1, 0, 0);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(texture)
+        });
+        recipe.RootStack.Layers.Add(new TransformLayer
+        {
+            Offset = new Vector2(0.25f, 0f)
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+
+        var pixels = ReadPixels(result);
+        Assert.That(PixelRed(pixels, 4, 1, 0), Is.GreaterThan(0.95f));
+        Assert.That(PixelRed(pixels, 4, 0, 0), Is.LessThan(0.02f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(texture);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_TransformLayer_ScaleZoomsAroundPivot()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(8, 1);
+        var texture = CreateGreenGradientTexture(8, 1);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(texture)
+        });
+        recipe.RootStack.Layers.Add(new TransformLayer
+        {
+            Scale = new Vector2(2f, 1f)
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+
+        var pixels = ReadPixels(result);
+        Assert.That(pixels[0].g, Is.GreaterThan(0.1f));
+        Assert.That(pixels[7].g, Is.LessThan(0.9f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(texture);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_TransformLayer_RotatesAroundPivot()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(3, 3);
+        var texture = CreateRedImpulseTexture(3, 3, 0, 0);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(texture)
+        });
+        recipe.RootStack.Layers.Add(new TransformLayer
+        {
+            Rotation = 180f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+
+        var pixels = ReadPixels(result);
+        Assert.That(PixelRed(pixels, 3, 2, 2), Is.GreaterThan(0.95f));
+        Assert.That(PixelRed(pixels, 3, 0, 0), Is.LessThan(0.02f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(texture);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
     public void Evaluate_NoiseLayer_WriteMaskPreservesUntouchedChannels()
     {
         IgnoreUnsupportedCompute();
@@ -1048,11 +1280,48 @@ public sealed class TextureRecipeEvaluatorTests
         return texture;
     }
 
+    static Texture2D CreateRedImpulseTexture(int width, int height, int impulseX, int impulseY)
+    {
+        var texture = new Texture2D(width, height, TextureFormat.RGBA32, false, true)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Repeat
+        };
+
+        for (var y = 0; y < texture.height; y++)
+        for (var x = 0; x < texture.width; x++)
+            texture.SetPixel(x, y, x == impulseX && y == impulseY ? Color.red : Color.clear);
+
+        texture.Apply();
+        return texture;
+    }
+
+    static Texture2D CreatePatternTexture(int width, int height)
+    {
+        var texture = new Texture2D(width, height, TextureFormat.RGBA32, false, true)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Repeat
+        };
+
+        for (var y = 0; y < texture.height; y++)
+        for (var x = 0; x < texture.width; x++)
+            texture.SetPixel(x, y, new Color(
+                x == 0 && y == 0 ? 1f : 0f,
+                x / (float)(width - 1),
+                y / (float)(height - 1),
+                0.5f));
+
+        texture.Apply();
+        return texture;
+    }
+
     static Texture2D CreateGreenGradientTexture(int width, int height)
     {
         var texture = new Texture2D(width, height, TextureFormat.RGBA32, false, true)
         {
-            filterMode = FilterMode.Point
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Repeat
         };
 
         for (var y = 0; y < texture.height; y++)

@@ -31,6 +31,15 @@ public sealed class TextureRecipeValidatorTests
     }
 
     [Test]
+    public void BlurLayer_DefaultRadius_IsUvScale()
+    {
+        var blurLayer = new BlurLayer();
+
+        Assert.That(blurLayer.RadiusMode, Is.EqualTo(BlurRadiusMode.UV));
+        Assert.That(blurLayer.Radius, Is.EqualTo(0.02f).Within(0.0001f));
+    }
+
+    [Test]
     public void AssetPath_Relative_ResolvesProjectPath()
     {
         var path = AssetPath.Relative("LayeredTexture");
@@ -157,6 +166,34 @@ public sealed class TextureRecipeValidatorTests
 
         var recipe = CreateRecipe(1, 1);
         recipe.RootStack.Layers.Add(new WarpLayer());
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void ValidateRuntime_BlurLayer_IsValid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(4, 4);
+        recipe.RootStack.Layers.Add(new BlurLayer());
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void ValidateRuntime_TransformLayer_IsValid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(4, 4);
+        recipe.RootStack.Layers.Add(new TransformLayer());
 
         Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
         LogAssert.NoUnexpectedReceived();

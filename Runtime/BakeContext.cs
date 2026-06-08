@@ -31,6 +31,11 @@ namespace Unmanaged.LayeredTexture
         public RenderTexture previous;
 
         /// <summary>
+        /// Reusable temporary texture for multi-pass layers.
+        /// </summary>
+        public RenderTexture scratch;
+
+        /// <summary>
         /// Command buffer used for simple render-target operations.
         /// </summary>
         public CommandBuffer cmd;
@@ -135,6 +140,20 @@ namespace Unmanaged.LayeredTexture
         }
 
         /// <summary>
+        /// Returns a reusable full-resolution scratch texture.
+        /// </summary>
+        public RenderTexture GetScratch()
+        {
+            if (scratch != null)
+                return scratch;
+
+            scratch = CreateTexture("LayeredTexture Scratch", resolution, workingFormat, false);
+            scratch.wrapMode = TextureWrapMode.Repeat;
+            scratch.filterMode = FilterMode.Bilinear;
+            return scratch;
+        }
+
+        /// <summary>
         /// Transfers ownership of the current render texture to the caller.
         /// </summary>
         /// <returns>The evaluated render texture.</returns>
@@ -153,42 +172,49 @@ namespace Unmanaged.LayeredTexture
             Release(current);
             Release(previous);
             Release(mask);
+            Release(scratch);
             current = null;
             previous = null;
             mask = null;
+            scratch = null;
             activeMask = null;
             cmd?.Release();
             cmd = null;
         }
 
-        static RenderTexture CreateTexture(string name, OutputProfile output)
+        static RenderTexture CreateTexture(string name, OutputProfile output) =>
+            CreateTexture(name, output.Resolution, output.WorkingFormat, output.GenerateMips);
+
+        static RenderTexture CreateTexture(string name, Vector2Int resolution, GraphicsFormat format, bool useMipMap)
         {
-            var descriptor = new RenderTextureDescriptor(output.Resolution.x, output.Resolution.y)
+            var descriptor = new RenderTextureDescriptor(resolution.x, resolution.y)
             {
                 depthBufferBits = 0,
                 enableRandomWrite = true,
-                graphicsFormat = output.WorkingFormat,
+                graphicsFormat = format,
                 msaaSamples = 1,
                 autoGenerateMips = false,
-                useMipMap = output.GenerateMips
+                useMipMap = useMipMap
             };
 
             var texture = new RenderTexture(descriptor)
             {
-                name = name
+                name = name,
+                wrapMode = TextureWrapMode.Repeat,
+                filterMode = FilterMode.Bilinear
             };
 
             if (!texture.Create())
             {
                 Release(texture);
                 throw new InvalidOperationException(
-                    $"Failed to create {name} render texture ({output.Resolution.x}x{output.Resolution.y}, {output.WorkingFormat}).");
+                    $"Failed to create {name} render texture ({resolution.x}x{resolution.y}, {format}).");
             }
 
             return texture;
         }
 
-        static void Release(RenderTexture texture)
+        internal static void Release(RenderTexture texture)
         {
             if (texture == null)
                 return;
