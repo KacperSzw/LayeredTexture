@@ -39,6 +39,16 @@ namespace Unmanaged.LayeredTexture
         public GraphicsFormat WorkingFormat;
 
         /// <summary>
+        /// Stored Texture2DArray format.
+        /// </summary>
+        public TextureArrayOutputFormat OutputFormat;
+
+        /// <summary>
+        /// Quality used when the output format is block-compressed.
+        /// </summary>
+        public TextureArrayCompressionQuality CompressionQuality;
+
+        /// <summary>
         /// Whether the generated Texture2DArray should contain mipmaps.
         /// </summary>
         public bool GenerateMips;
@@ -54,7 +64,9 @@ namespace Unmanaged.LayeredTexture
         public static TextureArrayOutputProfile Default => new()
         {
             Resolution = new Vector2Int(1024, 1024),
-            WorkingFormat = GraphicsFormat.R16G16B16A16_UNorm
+            WorkingFormat = GraphicsFormat.R16G16B16A16_UNorm,
+            OutputFormat = TextureArrayOutputFormat.RGBA32,
+            CompressionQuality = TextureArrayCompressionQuality.Normal
         };
 
         /// <summary>
@@ -70,5 +82,26 @@ namespace Unmanaged.LayeredTexture
             GenerateMips = GenerateMips,
             SRGB = SRGB
         };
+    }
+
+    /// <summary>
+    /// Curated Texture2DArray storage formats supported by the editor bake pipeline.
+    /// </summary>
+    public enum TextureArrayOutputFormat
+    {
+        RGBA32,
+        BC7,
+        BC3,
+        BC1
+    }
+
+    /// <summary>
+    /// Editor compression quality for block-compressed Texture2DArray output.
+    /// </summary>
+    public enum TextureArrayCompressionQuality
+    {
+        Normal,
+        Fast,
+        Best
     }
 }

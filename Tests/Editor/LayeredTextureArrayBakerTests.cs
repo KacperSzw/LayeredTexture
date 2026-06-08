@@ -5,6 +5,7 @@ using Unmanaged.LayeredTexture.Editor;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
+using UnityEngine.Rendering;
 using UnityEngine.TestTools;
 
 public sealed class LayeredTextureArrayBakerTests
@@ -36,6 +37,8 @@ public sealed class LayeredTextureArrayBakerTests
         {
             Assert.That(array.Output.Resolution, Is.EqualTo(new Vector2Int(1024, 1024)));
             Assert.That(array.Output.WorkingFormat, Is.EqualTo(GraphicsFormat.R16G16B16A16_UNorm));
+            Assert.That(array.Output.OutputFormat, Is.EqualTo(TextureArrayOutputFormat.RGBA32));
+            Assert.That(array.Output.CompressionQuality, Is.EqualTo(TextureArrayCompressionQuality.Normal));
             Assert.That(array.Output.GenerateMips, Is.False);
             Assert.That(array.Output.SRGB, Is.False);
             Assert.That(array.Pages, Is.Empty);
@@ -62,11 +65,12 @@ public sealed class LayeredTextureArrayBakerTests
         {
             Assert.That(LayeredTextureArrayBaker.Bake(array, out var error), Is.True, error);
 
-            var textureArray = LoadBakedArray(Path, array.name);
+            var textureArray = LoadBakedArray(Path);
             Assert.That(textureArray, Is.Not.Null);
             Assert.That(textureArray.width, Is.EqualTo(2));
             Assert.That(textureArray.height, Is.EqualTo(2));
             Assert.That(textureArray.depth, Is.EqualTo(2));
+            Assert.That(textureArray.format, Is.EqualTo(TextureFormat.RGBA32));
             AssertArrayPixels(textureArray, 0, Color.red);
             AssertArrayPixels(textureArray, 1, Color.green);
         }
@@ -93,7 +97,7 @@ public sealed class LayeredTextureArrayBakerTests
         {
             Assert.That(LayeredTextureArrayBaker.Bake(array, out var error), Is.True, error);
 
-            var textureArray = LoadBakedArray(Path, array.name);
+            var textureArray = LoadBakedArray(Path);
             Assert.That(textureArray, Is.Not.Null);
             Assert.That(textureArray.width, Is.EqualTo(4));
             Assert.That(textureArray.height, Is.EqualTo(2));
@@ -129,13 +133,105 @@ public sealed class LayeredTextureArrayBakerTests
         {
             Assert.That(LayeredTextureArrayBaker.Bake(array, out var error), Is.True, error);
 
-            var textureArray = LoadBakedArray(Path, array.name);
+            var textureArray = LoadBakedArray(Path);
             Assert.That(textureArray, Is.Not.Null);
             AssertArrayPixels(textureArray, 0, new Color(0.2f, 0.6f, 0.8f, 1f));
         }
         finally
         {
             Object.DestroyImmediate(recipe);
+            DestroyArray(array);
+        }
+    }
+
+    [Test]
+    public void Bake_CompressedOutput_WritesCompressedTexture2DArray()
+    {
+        IgnoreUnsupportedCompute();
+        IgnoreUnsupportedCompressedOutput(out var outputFormat, out var textureFormat);
+
+        const string Path = TestFolder + "/CompressedArray.asset";
+        var array = CreateArray(Path, 4, 4);
+        array.Output.OutputFormat = outputFormat;
+        array.Output.CompressionQuality = TextureArrayCompressionQuality.Fast;
+        array.Pages.Add(CreateSolidRecipe(new Color(0.25f, 0.5f, 0.75f, 1f)));
+
+        try
+        {
+            Assert.That(LayeredTextureArrayBaker.Bake(array, out var error), Is.True, error);
+
+            var textureArray = LoadBakedArray(Path);
+            Assert.That(textureArray, Is.Not.Null);
+            Assert.That(textureArray.width, Is.EqualTo(4));
+            Assert.That(textureArray.height, Is.EqualTo(4));
+            Assert.That(textureArray.depth, Is.EqualTo(1));
+            Assert.That(textureArray.format, Is.EqualTo(textureFormat));
+        }
+        finally
+        {
+            Object.DestroyImmediate(array.Pages[0]);
+            DestroyArray(array);
+        }
+    }
+
+    [Test]
+    public void Bake_OutputPath_IsSiblingAssetNextToArrayAsset()
+    {
+        const string Path = TestFolder + "/Nested/Array.asset";
+        var array = CreateArray(Path, 2, 2);
+        array.Pages.Add(CreateSolidRecipe(Color.white));
+
+        try
+        {
+            Assert.That(LayeredTextureArrayBaker.Bake(array, out var error), Is.True, error);
+
+            const string ExpectedPath = TestFolder + "/Nested/Array_Texture2DArray.asset";
+            Assert.That(AssetDatabase.GetAssetPath(array), Is.EqualTo(Path));
+            Assert.That(AssetDatabase.LoadAssetAtPath<Texture2DArray>(ExpectedPath), Is.Not.Null);
+        }
+        finally
+        {
+            Object.DestroyImmediate(array.Pages[0]);
+            DestroyArray(array);
+        }
+    }
+
+    [Test]
+    public void Bake_CompressedOutputWithNonBlockAlignedResolution_Fails()
+    {
+        IgnoreUnsupportedCompressedOutput(out var outputFormat, out _);
+
+        var array = CreateArray(TestFolder + "/CompressedInvalidSize.asset", 2, 4);
+        array.Output.OutputFormat = outputFormat;
+        array.Pages.Add(CreateSolidRecipe(Color.white));
+
+        try
+        {
+            Assert.That(LayeredTextureArrayBaker.Bake(array, out var error), Is.False);
+            Assert.That(error, Is.EqualTo($"LayeredTextureArray.Output.Resolution must be a multiple of 4 for {outputFormat}."));
+        }
+        finally
+        {
+            Object.DestroyImmediate(array.Pages[0]);
+            DestroyArray(array);
+        }
+    }
+
+    [Test]
+    public void Bake_InvalidOutputFormat_Fails()
+    {
+        var array = CreateArray(TestFolder + "/InvalidFormat.asset", 4, 4);
+        array.Output.OutputFormat = (TextureArrayOutputFormat)999;
+        array.Pages.Add(CreateSolidRecipe(Color.white));
+
+        try
+        {
+            Assert.That(LayeredTextureArrayBaker.Bake(array, out var error), Is.False);
+            Assert.That(error, Is.EqualTo("LayeredTextureArray.Output.OutputFormat is unsupported: 999."));
+        }
+        finally
+        {
+            Object.DestroyImmediate(array.Pages[0]);
             DestroyArray(array);
         }
     }
@@ -272,18 +368,14 @@ public sealed class LayeredTextureArrayBakerTests
             AssertColor(pixel, expected);
     }
 
-    static Texture2DArray LoadBakedArray(string assetPath, string name)
-    {
-        var assets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+    static Texture2DArray LoadBakedArray(string arrayPath) =>
+        AssetDatabase.LoadAssetAtPath<Texture2DArray>(BakedArrayPath(arrayPath));
 
-        for (var i = 0; i < assets.Length; i++)
-        {
-            if (assets[i] is Texture2DArray textureArray && textureArray.name == name)
-                return textureArray;
-        }
-
-        return null;
-    }
+    static string BakedArrayPath(string arrayPath) =>
+        Path.Combine(
+                Path.GetDirectoryName(arrayPath) ?? string.Empty,
+                Path.GetFileNameWithoutExtension(arrayPath) + "_Texture2DArray.asset")
+            .Replace('\\', '/');
 
     static void AssertColor(Color actual, Color expected)
     {
@@ -321,5 +413,33 @@ public sealed class LayeredTextureArrayBakerTests
 
         if (!SystemInfo.IsFormatSupported(GraphicsFormat.R16G16B16A16_UNorm, GraphicsFormatUsage.LoadStore))
             Assert.Ignore("Default LayeredTexture working format does not support compute writes in this editor environment.");
+    }
+
+    static void IgnoreUnsupportedCompressedOutput(
+        out TextureArrayOutputFormat outputFormat,
+        out TextureFormat textureFormat)
+    {
+        outputFormat = default;
+        textureFormat = default;
+
+        if ((SystemInfo.copyTextureSupport & CopyTextureSupport.Basic) == 0)
+            Assert.Ignore("Texture copy is not supported in this editor environment.");
+
+        foreach (var format in new[]
+                 {
+                     (TextureArrayOutputFormat.BC7, TextureFormat.BC7),
+                     (TextureArrayOutputFormat.BC3, TextureFormat.DXT5),
+                     (TextureArrayOutputFormat.BC1, TextureFormat.DXT1)
+                 })
+        {
+            if (!SystemInfo.SupportsTextureFormat(format.Item2))
+                continue;
+
+            outputFormat = format.Item1;
+            textureFormat = format.Item2;
+            return;
+        }
+
+        Assert.Ignore("No tested Texture2DArray compression format is supported in this editor environment.");
     }
 }

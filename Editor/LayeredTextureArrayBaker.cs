@@ -3,6 +3,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
+using UnityEngine.Rendering;
 
 namespace Unmanaged.LayeredTexture.Editor
 {
@@ -53,7 +54,10 @@ namespace Unmanaged.LayeredTexture.Editor
 
                     try
                     {
-                        textures[i] = LayeredTextureBakeUtility.ReadBack(renderTexture, TextureFormat.RGBA32);
+                        textures[i] = LayeredTextureBakeUtility.ReadBack(
+                            renderTexture,
+                            TextureFormat.RGBA32,
+                            array.Output.GenerateMips);
                     }
                     finally
                     {
@@ -117,6 +121,33 @@ namespace Unmanaged.LayeredTexture.Editor
                 return false;
             }
 
+            if (!TryGetTextureFormat(output.OutputFormat, out var textureFormat))
+            {
+                error = $"LayeredTextureArray.Output.OutputFormat is unsupported: {output.OutputFormat}.";
+                return false;
+            }
+
+            if (!SystemInfo.SupportsTextureFormat(textureFormat))
+            {
+                error = $"LayeredTextureArray.Output.OutputFormat is not supported on this platform: {output.OutputFormat}.";
+                return false;
+            }
+
+            if (!IsCompressed(output.OutputFormat))
+                return true;
+
+            if ((SystemInfo.copyTextureSupport & CopyTextureSupport.Basic) == 0)
+            {
+                error = "LayeredTextureArray compressed output requires Graphics.CopyTexture support.";
+                return false;
+            }
+
+            if (output.Resolution.x % 4 != 0 || output.Resolution.y % 4 != 0)
+            {
+                error = $"LayeredTextureArray.Output.Resolution must be a multiple of 4 for {output.OutputFormat}.";
+                return false;
+            }
+
             return true;
         }
 
@@ -160,13 +191,27 @@ namespace Unmanaged.LayeredTexture.Editor
                 return false;
             }
 
-            assetPath = arrayPath.Replace('\\', '/');
+            arrayPath = arrayPath.Replace('\\', '/');
+            var directory = Path.GetDirectoryName(arrayPath)?.Replace('\\', '/');
+            var fileName = Path.GetFileNameWithoutExtension(arrayPath);
+            assetPath = string.IsNullOrEmpty(directory)
+                ? $"{fileName}_Texture2DArray.asset"
+                : $"{directory}/{fileName}_Texture2DArray.asset";
             var projectRoot = Directory.GetParent(Application.dataPath).FullName;
             fullPath = Path.GetFullPath(Path.Combine(projectRoot, assetPath));
             return true;
         }
 
         static Texture2DArray CreateTextureArray(LayeredTextureArray array, Texture2D[] textures)
+        {
+            var output = array.Output;
+
+            return IsCompressed(output.OutputFormat)
+                ? CreateCompressedTextureArray(array, textures)
+                : CreateUncompressedTextureArray(array, textures);
+        }
+
+        static Texture2DArray CreateUncompressedTextureArray(LayeredTextureArray array, Texture2D[] textures)
         {
             var output = array.Output;
             var textureArray = new Texture2DArray(
@@ -189,15 +234,58 @@ namespace Unmanaged.LayeredTexture.Editor
             return textureArray;
         }
 
+        static Texture2DArray CreateCompressedTextureArray(LayeredTextureArray array, Texture2D[] textures)
+        {
+            var output = array.Output;
+            TryGetTextureFormat(output.OutputFormat, out var textureFormat);
+            var textureArray = new Texture2DArray(
+                output.Resolution.x,
+                output.Resolution.y,
+                textures.Length,
+                textureFormat,
+                output.GenerateMips,
+                !output.SRGB)
+            {
+                name = array.name,
+                wrapMode = TextureWrapMode.Repeat,
+                filterMode = FilterMode.Bilinear
+            };
+
+            for (var i = 0; i < textures.Length; i++)
+            {
+                EditorUtility.CompressTexture(
+                    textures[i],
+                    textureFormat,
+                    CompressionQualityFor(output.CompressionQuality));
+                CopyTextureMipChain(textures[i], textureArray, i);
+            }
+
+            return textureArray;
+        }
+
+        static void CopyTextureMipChain(Texture source, Texture2DArray target, int slice)
+        {
+            var count = Mathf.Min(source.mipmapCount, target.mipmapCount);
+
+            for (var mip = 0; mip < count; mip++)
+                Graphics.CopyTexture(source, 0, mip, target, slice, mip);
+        }
+
         static bool SaveTextureArray(Texture2DArray textureArray, string assetPath, out string error)
         {
             error = null;
-            var existingArray = FindExistingTextureArray(assetPath, textureArray.name);
+            var existingAsset = AssetDatabase.LoadMainAssetAtPath(assetPath);
 
-            if (existingArray == null)
+            if (existingAsset == null)
             {
-                AssetDatabase.AddObjectToAsset(textureArray, assetPath);
+                AssetDatabase.CreateAsset(textureArray, assetPath);
                 return true;
+            }
+
+            if (existingAsset is not Texture2DArray existingArray)
+            {
+                error = "LayeredTextureArray output path already contains a non-Texture2DArray asset.";
+                return false;
             }
 
             EditorUtility.CopySerialized(textureArray, existingArray);
@@ -205,17 +293,32 @@ namespace Unmanaged.LayeredTexture.Editor
             return true;
         }
 
-        static Texture2DArray FindExistingTextureArray(string assetPath, string name)
+        static bool TryGetTextureFormat(TextureArrayOutputFormat outputFormat, out TextureFormat textureFormat)
         {
-            var assets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
-
-            for (var i = 0; i < assets.Length; i++)
+            textureFormat = outputFormat switch
             {
-                if (assets[i] is Texture2DArray textureArray && textureArray.name == name)
-                    return textureArray;
-            }
+                TextureArrayOutputFormat.RGBA32 => TextureFormat.RGBA32,
+                TextureArrayOutputFormat.BC7 => TextureFormat.BC7,
+                TextureArrayOutputFormat.BC3 => TextureFormat.DXT5,
+                TextureArrayOutputFormat.BC1 => TextureFormat.DXT1,
+                _ => default
+            };
 
-            return null;
+            return outputFormat is TextureArrayOutputFormat.RGBA32
+                or TextureArrayOutputFormat.BC7
+                or TextureArrayOutputFormat.BC3
+                or TextureArrayOutputFormat.BC1;
         }
+
+        static bool IsCompressed(TextureArrayOutputFormat outputFormat) =>
+            outputFormat != TextureArrayOutputFormat.RGBA32;
+
+        static TextureCompressionQuality CompressionQualityFor(TextureArrayCompressionQuality quality) =>
+            quality switch
+            {
+                TextureArrayCompressionQuality.Fast => TextureCompressionQuality.Fast,
+                TextureArrayCompressionQuality.Best => TextureCompressionQuality.Best,
+                _ => TextureCompressionQuality.Normal
+            };
     }
 }

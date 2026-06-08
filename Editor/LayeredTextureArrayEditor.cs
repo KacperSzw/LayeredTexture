@@ -45,9 +45,20 @@ namespace Unmanaged.LayeredTexture.Editor
             {
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("Resolution"));
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("WorkingFormat"));
+                EditorGUILayout.PropertyField(output.FindPropertyRelative("OutputFormat"));
+
+                if (IsCompressedOutput())
+                    EditorGUILayout.PropertyField(output.FindPropertyRelative("CompressionQuality"));
+
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("GenerateMips"));
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("SRGB"));
             }
+        }
+
+        bool IsCompressedOutput()
+        {
+            var outputFormat = output.FindPropertyRelative("OutputFormat");
+            return (TextureArrayOutputFormat)outputFormat.enumValueIndex != TextureArrayOutputFormat.RGBA32;
         }
 
         void DrawPage(Rect rect, int index, bool active, bool focused)

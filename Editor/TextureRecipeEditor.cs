@@ -1,6 +1,4 @@
-using System.Collections.Generic;
 using UnityEditor;
-using UnityEditorInternal;
 using UnityEngine;
 
 namespace Unmanaged.LayeredTexture.Editor
@@ -11,32 +9,16 @@ namespace Unmanaged.LayeredTexture.Editor
         readonly SerializedObject serializedObject;
         readonly System.Action repaint;
         SerializedProperty output;
-        SerializedProperty layers;
-        ReorderableList layerList;
+        TextureLayerStackEditor layerStackEditor;
         RenderTexture previewTexture;
-        readonly Dictionary<int, RenderTexture> layerPreviews = new();
         bool previewDirty = true;
-        bool clipLayerPreviews;
-        Rect layerPreviewScreenClipRect;
         TexturePreviewDisplayMode previewDisplayMode;
         Vector2 editScroll;
-        int removeLayerIndex = -1;
         int previewSize;
         string previewError;
         string bakeStatus;
         MessageType bakeStatusType;
 
-        static float LineHeight => EditorGUIUtility.singleLineHeight;
-        static float Spacing => EditorGUIUtility.standardVerticalSpacing;
-        static float LayerPadding => 6f;
-        static float SectionPadding => 5f;
-        static float SectionGap => 4f;
-        static float HeaderHeight => 28f;
-        static float LabelWidth => 82f;
-        static float PreviewRailWidth => 154f;
-        static float LayerPreviewHeight => 86f;
-        static float HeaderPreviewWidth => 74f;
-        static float RemoveButtonWidth => 22f;
         const string PreviewDisplayModeKey = "Unmanaged.LayeredTexture.PreviewDisplayMode";
         const string PreviewSizeKey = "Unmanaged.LayeredTexture.PreviewSize";
         const int MinPreviewSize = 80;
@@ -53,25 +35,27 @@ namespace Unmanaged.LayeredTexture.Editor
         public void Dispose()
         {
             Undo.undoRedoPerformed -= HandleUndoRedo;
+            layerStackEditor?.Dispose();
             ReleasePreview();
-            ReleaseLayerPreviews();
         }
 
         void Initialize()
         {
             output = serializedObject.FindProperty("Output");
-            layers = serializedObject.FindProperty("RootStack").FindPropertyRelative("Layers");
             previewDisplayMode = LoadPreviewDisplayMode();
             previewSize = EditorPrefs.GetInt(PreviewSizeKey, 220);
-            layerList = new ReorderableList(serializedObject, layers, true, true, true, true)
-            {
-                drawHeaderCallback = rect => EditorGUI.LabelField(rect, "Layers"),
-                drawElementCallback = DrawLayer,
-                elementHeightCallback = GetLayerHeight,
-                onAddDropdownCallback = ShowLayerMenu,
-                onRemoveCallback = RemoveLayer,
-                onReorderCallback = _ => MarkPreviewDirty()
-            };
+            layerStackEditor = new TextureLayerStackEditor(
+                serializedObject,
+                serializedObject.FindProperty("RootStack"),
+                new TextureLayerStackEditorContext
+                {
+                    UndoTarget = recipe,
+                    PreviewRecipe = recipe,
+                    GetOutput = () => recipe.Output,
+                    SourceResolver = TextureRecipeEditorSourceResolver.Instance,
+                    Changed = MarkPreviewDirty
+                },
+                repaint);
 
             Undo.undoRedoPerformed += HandleUndoRedo;
         }
@@ -94,12 +78,13 @@ namespace Unmanaged.LayeredTexture.Editor
             var scrollTop = GUILayoutUtility.GetLastRect().yMax;
             var scrollHeight = Mathf.Max(0f, windowHeight - scrollTop);
             var screenOrigin = GUIUtility.GUIToScreenPoint(Vector2.zero);
-            layerPreviewScreenClipRect = new Rect(
+            var clipRect = new Rect(
                 screenOrigin.x,
                 screenOrigin.y + scrollTop,
                 EditorGUIUtility.currentViewWidth,
                 scrollHeight);
-            clipLayerPreviews = true;
+
+            layerStackEditor.SetPreviewClip(clipRect);
 
             try
             {
@@ -111,15 +96,14 @@ namespace Unmanaged.LayeredTexture.Editor
             }
             finally
             {
-                clipLayerPreviews = false;
+                layerStackEditor.ClearPreviewClip();
             }
         }
 
         void DrawEditControls()
         {
             EditorGUI.BeginChangeCheck();
-            layerList.DoLayoutList();
-            RemovePendingLayer();
+            layerStackEditor.DrawLayout();
             EditorGUILayout.Space(6f);
             DrawOutput();
 
@@ -127,7 +111,7 @@ namespace Unmanaged.LayeredTexture.Editor
             var applied = serializedObject.ApplyModifiedProperties();
 
             if (changed || applied)
-                MarkPreviewDirty();
+                layerStackEditor.MarkPreviewDirty();
 
             EditorGUILayout.Space(6f);
             DrawBakeControls();
@@ -146,434 +130,6 @@ namespace Unmanaged.LayeredTexture.Editor
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("GenerateMips"));
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("SRGB"));
             }
-        }
-
-        void DrawLayer(Rect rect, int index, bool active, bool focused)
-        {
-            var layer = layers.GetArrayElementAtIndex(index);
-            var layerRect = new Rect(rect.x + 2f, rect.y + 2f, rect.width - 4f, rect.height - 4f);
-
-            if (layer.managedReferenceValue == null)
-            {
-                DrawLayerFrame(layerRect);
-                EditorGUI.LabelField(Inset(layerRect, LayerPadding, LayerPadding), "Missing Layer");
-                HandleMissingLayerContextMenu(layerRect, index);
-                return;
-            }
-
-            DrawLayerFrame(layerRect);
-            HandleLayerContextMenu(layerRect, index, (TextureLayerBase)layer.managedReferenceValue);
-
-            var contentRect = Inset(layerRect, LayerPadding, LayerPadding);
-            var textureLayer = (TextureLayerBase)layer.managedReferenceValue;
-            var removeRect = new Rect(
-                contentRect.xMax - RemoveButtonWidth,
-                contentRect.y + (HeaderHeight - LineHeight) * 0.5f,
-                RemoveButtonWidth,
-                LineHeight);
-            var headerRight = removeRect.x - SectionGap;
-            var headerPreviewRect = new Rect(
-                headerRight - HeaderPreviewWidth,
-                contentRect.y,
-                HeaderPreviewWidth,
-                HeaderHeight);
-            var showCollapsedPreview = !layer.isExpanded && textureLayer.SupportsRawPreview;
-            var headerRect = new Rect(
-                contentRect.x,
-                contentRect.y,
-                headerPreviewRect.x - contentRect.x - SectionGap,
-                HeaderHeight);
-
-            DrawLayerHeaderRow(headerRect, layer);
-            DrawRemoveLayerButton(removeRect, index);
-
-            if (showCollapsedPreview)
-                DrawLayerPreviewColumn(headerPreviewRect, index, textureLayer, true);
-
-            if (!layer.isExpanded)
-                return;
-
-            var y = headerRect.yMax + SectionGap;
-            var bodyHeight = GetLayerBodyHeight(layer);
-            var fieldsWidth = contentRect.width;
-
-            if (textureLayer.SupportsRawPreview)
-            {
-                var previewRailRect = new Rect(
-                    contentRect.xMax - PreviewRailWidth,
-                    y,
-                    PreviewRailWidth,
-                    bodyHeight);
-                DrawLayerPreviewColumn(previewRailRect, index, textureLayer, false);
-                fieldsWidth = Mathf.Max(1f, previewRailRect.x - contentRect.x - SectionGap);
-            }
-
-            var specificRect = new Rect(contentRect.x, y, fieldsWidth, GetLayerSpecificHeight(layer));
-            DrawLayerSpecificBox(specificRect, layer);
-        }
-
-        void DrawLayerHeaderRow(Rect rect, SerializedProperty layer)
-        {
-            var textureLayer = (TextureLayerBase)layer.managedReferenceValue;
-            var enabled = layer.FindPropertyRelative("Enabled");
-            var writeMask = layer.FindPropertyRelative("WriteMask");
-            var opacity = layer.FindPropertyRelative("Opacity");
-            var blendMode = layer.FindPropertyRelative("BlendMode");
-            var rowY = rect.y + (HeaderHeight - LineHeight) * 0.5f;
-            var enabledRect = new Rect(rect.x + 3f, rowY + 1f, 18f, LineHeight);
-            var foldoutArrowRect = new Rect(enabledRect.xMax + 14f, rowY, 14f, LineHeight);
-            var roleRect = new Rect(foldoutArrowRect.xMax + 4f, rowY + 2f, 30f, LineHeight - 4f);
-            var blendRect = new Rect(rect.xMax - 96f, rowY, 96f, LineHeight);
-            var opacityRect = new Rect(blendRect.x - 116f, rowY, 112f, LineHeight);
-            var channelRect = new Rect(opacityRect.x - 98f, rowY + 1f, 94f, LineHeight - 2f);
-            var titleRect = new Rect(
-                roleRect.xMax + 6f,
-                rowY,
-                Mathf.Max(80f, channelRect.x - roleRect.xMax - 8f),
-                LineHeight);
-
-            EditorGUI.PropertyField(enabledRect, enabled, GUIContent.none);
-            layer.isExpanded = EditorGUI.Foldout(foldoutArrowRect, layer.isExpanded, GUIContent.none, true);
-            DrawRoleBadge(roleRect, textureLayer.Role);
-            EditorGUI.LabelField(titleRect, LayerName(layer), EditorStyles.boldLabel);
-            HandleFoldoutClick(new Rect(foldoutArrowRect.xMax, rowY, titleRect.xMax - foldoutArrowRect.xMax, LineHeight), layer);
-            DrawWriteMaskButtons(channelRect, writeMask);
-            opacity.floatValue = EditorGUI.Slider(opacityRect, GUIContent.none, opacity.floatValue, 0f, 1f);
-            EditorGUI.PropertyField(blendRect, blendMode, GUIContent.none);
-        }
-
-        void DrawLayerSpecificBox(Rect rect, SerializedProperty layer)
-        {
-            GUI.Box(rect, GUIContent.none, EditorStyles.helpBox);
-            DrawLayerFields(Inset(rect, SectionPadding, SectionPadding), layer);
-        }
-
-        void DrawLayerFields(Rect rect, SerializedProperty layer)
-        {
-            switch (layer.managedReferenceValue)
-            {
-                case SolidColorLayer:
-                    EditorGUI.PropertyField(NextLine(ref rect), layer.FindPropertyRelative("Color"));
-                    break;
-                case TextureFileLayer:
-                    DrawTextureSource(NextLine(ref rect), layer.FindPropertyRelative("Source"), "Texture");
-                    break;
-                case NoiseLayer:
-                    DrawNoiseFields(ref rect, layer);
-                    break;
-                case WarpLayer:
-                    DrawWarpFields(ref rect, layer);
-                    break;
-                case WaterWavesLayer:
-                    DrawWaterWavesFields(ref rect, layer);
-                    break;
-                case NormalFromHeightLayer:
-                    DrawNoiseRow(
-                        NextLine(ref rect),
-                        layer.FindPropertyRelative("HeightUsage"),
-                        "Height",
-                        layer.FindPropertyRelative("Strength"),
-                        "Strength");
-                    break;
-                case RecipeReferenceLayer:
-                    EditorGUI.PropertyField(NextLine(ref rect), layer.FindPropertyRelative("Recipe"));
-                    break;
-                default:
-                    var helpRect = NextLine(ref rect);
-                    helpRect.height = LineHeight * 2f;
-                    rect.y += LineHeight + Spacing;
-                    EditorGUI.HelpBox(helpRect, "This layer type is not editable in the minimal inspector.", MessageType.Info);
-                    break;
-            }
-
-        }
-
-        float GetLayerHeight(int index)
-        {
-            var layer = layers.GetArrayElementAtIndex(index);
-
-            if (layer.managedReferenceValue == null || !layer.isExpanded)
-                return HeaderHeight + LayerPadding * 2f + 4f;
-
-            return HeaderHeight
-                + LayerPadding * 2f
-                + SectionGap
-                + GetLayerBodyHeight(layer)
-                + 4f;
-        }
-
-        static float GetLayerSpecificHeight(SerializedProperty layer)
-        {
-            var lines = layer.managedReferenceValue switch
-            {
-                SolidColorLayer => 1,
-                TextureFileLayer => 1,
-                NoiseLayer => 5,
-                WarpLayer => 2,
-                WaterWavesLayer => IsWaterWavesFoam(layer) ? 6 : 5,
-                NormalFromHeightLayer => 1,
-                RecipeReferenceLayer => 1,
-                _ => 2
-            };
-
-            return lines * LineHeight + (lines - 1) * Spacing + SectionPadding * 2f;
-        }
-
-        static float GetLayerBodyHeight(SerializedProperty layer)
-        {
-            var height = GetLayerSpecificHeight(layer);
-
-            return layer.managedReferenceValue is TextureLayerBase { SupportsRawPreview: true }
-                ? Mathf.Max(height, LayerPreviewHeight)
-                : height;
-        }
-
-        static void DrawWriteMaskButtons(Rect rect, SerializedProperty writeMask)
-        {
-            var buttonWidth = 22f;
-            var gap = 2f;
-            var value = writeMask.intValue;
-
-            DrawWriteMaskButton(new Rect(rect.x, rect.y, buttonWidth, rect.height), "R", ChannelWriteMask.R, new Color(0.72f, 0.32f, 0.32f), ref value);
-            DrawWriteMaskButton(new Rect(rect.x + (buttonWidth + gap), rect.y, buttonWidth, rect.height), "G", ChannelWriteMask.G, new Color(0.34f, 0.62f, 0.34f), ref value);
-            DrawWriteMaskButton(new Rect(rect.x + (buttonWidth + gap) * 2f, rect.y, buttonWidth, rect.height), "B", ChannelWriteMask.B, new Color(0.32f, 0.42f, 0.74f), ref value);
-            DrawWriteMaskButton(new Rect(rect.x + (buttonWidth + gap) * 3f, rect.y, buttonWidth, rect.height), "A", ChannelWriteMask.A, new Color(0.65f, 0.65f, 0.65f), ref value);
-
-            writeMask.intValue = value;
-        }
-
-        static void DrawWriteMaskButton(Rect rect, string label, ChannelWriteMask channel, Color tint, ref int value)
-        {
-            var mask = (int)channel;
-            var active = (value & mask) != 0;
-            var previousColor = GUI.backgroundColor;
-
-            if (active)
-                GUI.backgroundColor = Color.Lerp(previousColor, tint, EditorGUIUtility.isProSkin ? 0.65f : 0.45f);
-
-            if (GUI.Button(rect, label, EditorStyles.miniButton))
-                value = active ? value & ~mask : value | mask;
-
-            GUI.backgroundColor = previousColor;
-        }
-
-        static void HandleFoldoutClick(Rect rect, SerializedProperty layer)
-        {
-            var current = Event.current;
-
-            if (current.type != EventType.MouseDown || current.button != 0 || !rect.Contains(current.mousePosition))
-                return;
-
-            layer.isExpanded = !layer.isExpanded;
-            GUI.changed = true;
-            current.Use();
-        }
-
-        static void DrawRoleBadge(Rect rect, TextureLayerRole role)
-        {
-            var fill = role == TextureLayerRole.Source
-                ? new Color(0.16f, 0.32f, 0.48f, 0.9f)
-                : new Color(0.42f, 0.25f, 0.12f, 0.9f);
-
-            EditorGUI.DrawRect(rect, fill);
-            DrawBorder(rect, new Color(0f, 0f, 0f, 0.45f));
-
-            var style = EditorStyles.centeredGreyMiniLabel;
-            var previousColor = style.normal.textColor;
-            style.normal.textColor = new Color(0.86f, 0.9f, 0.94f);
-            GUI.Label(rect, role == TextureLayerRole.Source ? "SRC" : "FX", style);
-            style.normal.textColor = previousColor;
-        }
-
-        static void DrawBorder(Rect rect, Color color)
-        {
-            EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, 1f), color);
-            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), color);
-            EditorGUI.DrawRect(new Rect(rect.x, rect.y, 1f, rect.height), color);
-            EditorGUI.DrawRect(new Rect(rect.xMax - 1f, rect.y, 1f, rect.height), color);
-        }
-
-        static void DrawLayerFrame(Rect rect)
-        {
-            GUI.Box(rect, GUIContent.none, EditorStyles.helpBox);
-
-            var tint = EditorGUIUtility.isProSkin
-                ? new Color(1f, 1f, 1f, 0.025f)
-                : new Color(0f, 0f, 0f, 0.025f);
-            EditorGUI.DrawRect(Inset(rect, 1f, 1f), tint);
-        }
-
-        void ShowLayerMenu(Rect buttonRect, ReorderableList list)
-        {
-            var menu = new GenericMenu();
-            menu.AddItem(new GUIContent("SRC/Solid Color"), false, () => AddLayer(new SolidColorLayer()));
-            menu.AddItem(new GUIContent("SRC/Texture File"), false, () => AddLayer(new TextureFileLayer()));
-            menu.AddItem(new GUIContent("SRC/Noise"), false, () => AddLayer(new NoiseLayer()));
-            menu.AddItem(new GUIContent("SRC/Water Waves"), false, () => AddLayer(new WaterWavesLayer()));
-            menu.AddItem(new GUIContent("SRC/Recipe Reference"), false, () => AddLayer(new RecipeReferenceLayer()));
-            menu.AddSeparator("");
-            menu.AddItem(new GUIContent("FX/Warp"), false, () => AddLayer(new WarpLayer()));
-            menu.AddItem(new GUIContent("FX/Normal From Height"), false, () => AddLayer(new NormalFromHeightLayer()));
-            menu.DropDown(buttonRect);
-        }
-
-        void AddLayer(TextureLayerBase layer)
-        {
-            serializedObject.Update();
-            Undo.RegisterCompleteObjectUndo(recipe, "Add Texture Layer");
-
-            var index = layers.arraySize;
-            layers.arraySize++;
-            layers.GetArrayElementAtIndex(index).managedReferenceValue = layer;
-            layers.GetArrayElementAtIndex(index).isExpanded = true;
-            layerList.index = index;
-
-            serializedObject.ApplyModifiedProperties();
-            MarkPreviewDirty();
-        }
-
-        void RemoveLayer(ReorderableList list)
-        {
-            RemoveLayerAt(list.index);
-        }
-
-        void RemovePendingLayer()
-        {
-            if (removeLayerIndex < 0)
-                return;
-
-            RemoveLayerAt(removeLayerIndex);
-            removeLayerIndex = -1;
-        }
-
-        void RemoveLayerAt(int index)
-        {
-            if (index < 0 || index >= layers.arraySize)
-                return;
-
-            serializedObject.Update();
-            Undo.RegisterCompleteObjectUndo(recipe, "Remove Texture Layer");
-            layers.DeleteArrayElementAtIndex(index);
-            layerList.index = Mathf.Min(index, layers.arraySize - 1);
-            serializedObject.ApplyModifiedProperties();
-            MarkPreviewDirty();
-        }
-
-        void DrawRemoveLayerButton(Rect rect, int index)
-        {
-            if (!GUI.Button(rect, new GUIContent("x", "Remove layer"), EditorStyles.miniButton))
-                return;
-
-            removeLayerIndex = index;
-            GUI.changed = true;
-        }
-
-        void HandleLayerContextMenu(Rect rect, int index, TextureLayerBase layer)
-        {
-            var current = Event.current;
-
-            if (current.type != EventType.ContextClick || !rect.Contains(current.mousePosition))
-                return;
-
-            var menu = new GenericMenu();
-            menu.AddItem(new GUIContent("Copy Layer"), false, () => CopyLayer(layer));
-
-            if (TextureLayerClipboard.CanPasteValues(layer))
-                menu.AddItem(new GUIContent("Paste Values"), false, () => PasteLayerValues(index));
-            else
-                menu.AddDisabledItem(new GUIContent("Paste Values"));
-
-            if (TextureLayerClipboard.HasLayer)
-                menu.AddItem(new GUIContent("Paste As New"), false, () => PasteLayerAsNew(index));
-            else
-                menu.AddDisabledItem(new GUIContent("Paste As New"));
-
-            menu.AddItem(new GUIContent("Duplicate Layer"), false, () => DuplicateLayer(index));
-            menu.AddSeparator("");
-            menu.AddItem(new GUIContent("Remove Layer"), false, () => RemoveLayerAt(index));
-            menu.ShowAsContext();
-            current.Use();
-        }
-
-        void HandleMissingLayerContextMenu(Rect rect, int index)
-        {
-            var current = Event.current;
-
-            if (current.type != EventType.ContextClick || !rect.Contains(current.mousePosition))
-                return;
-
-            var menu = new GenericMenu();
-
-            if (TextureLayerClipboard.HasLayer)
-                menu.AddItem(new GUIContent("Paste As New"), false, () => PasteLayerAsNew(index));
-            else
-                menu.AddDisabledItem(new GUIContent("Paste As New"));
-
-            menu.AddItem(new GUIContent("Remove Layer"), false, () => RemoveLayerAt(index));
-            menu.ShowAsContext();
-            current.Use();
-        }
-
-        static void CopyLayer(TextureLayerBase layer) => TextureLayerClipboard.Copy(layer);
-
-        void PasteLayerValues(int index)
-        {
-            serializedObject.Update();
-
-            if (index < 0 || index >= layers.arraySize)
-                return;
-
-            var layer = layers.GetArrayElementAtIndex(index).managedReferenceValue as TextureLayerBase;
-
-            if (!TextureLayerClipboard.CanPasteValues(layer))
-                return;
-
-            Undo.RegisterCompleteObjectUndo(recipe, "Paste Texture Layer Values");
-            TextureLayerClipboard.TryPasteValues(layer);
-            EditorUtility.SetDirty(recipe);
-            serializedObject.Update();
-            MarkPreviewDirty();
-        }
-
-        void PasteLayerAsNew(int index)
-        {
-            if (!TextureLayerClipboard.TryCloneCopiedLayer(out var layer))
-                return;
-
-            InsertLayerAfter(index, layer, "Paste Texture Layer");
-        }
-
-        void DuplicateLayer(int index)
-        {
-            if (index < 0 || index >= layers.arraySize)
-                return;
-
-            var layer = layers.GetArrayElementAtIndex(index).managedReferenceValue as TextureLayerBase;
-
-            if (!TextureLayerClipboard.TryClone(layer, out var clone))
-                return;
-
-            InsertLayerAfter(index, clone, "Duplicate Texture Layer");
-        }
-
-        void InsertLayerAfter(int index, TextureLayerBase layer, string undoName)
-        {
-            serializedObject.Update();
-            Undo.RegisterCompleteObjectUndo(recipe, undoName);
-
-            var insertIndex = Mathf.Clamp(index + 1, 0, layers.arraySize);
-            if (insertIndex == layers.arraySize)
-                layers.arraySize++;
-            else
-                layers.InsertArrayElementAtIndex(insertIndex);
-
-            var property = layers.GetArrayElementAtIndex(insertIndex);
-            property.managedReferenceValue = layer;
-            property.isExpanded = true;
-            layerList.index = insertIndex;
-
-            serializedObject.ApplyModifiedProperties();
-            MarkPreviewDirty();
         }
 
         void DrawBakeControls()
@@ -678,35 +234,6 @@ namespace Unmanaged.LayeredTexture.Editor
             repaint?.Invoke();
         }
 
-        void DrawLayerPreviewColumn(Rect rect, int index, TextureLayerBase layer, bool compact)
-        {
-            var preview = GetLayerPreview(index, layer);
-
-            if (clipLayerPreviews)
-            {
-                DrawClippedLayerPreview(rect, preview, compact);
-                return;
-            }
-
-            if (compact)
-                TexturePreviewGUI.DrawCompact(rect, preview);
-            else
-                TexturePreviewGUI.Draw(rect, preview);
-        }
-
-        void DrawClippedLayerPreview(Rect rect, Texture preview, bool compact)
-        {
-            var screenRect = ToScreenRect(rect);
-
-            if (!ContainsVertically(layerPreviewScreenClipRect, screenRect))
-                return;
-
-            if (compact)
-                TexturePreviewGUI.DrawCompact(rect, preview);
-            else
-                TexturePreviewGUI.Draw(rect, preview);
-        }
-
         void Bake()
         {
             serializedObject.ApplyModifiedProperties();
@@ -748,7 +275,6 @@ namespace Unmanaged.LayeredTexture.Editor
         void MarkPreviewDirty()
         {
             previewDirty = true;
-            ReleaseLayerPreviews();
             repaint?.Invoke();
         }
 
@@ -758,415 +284,6 @@ namespace Unmanaged.LayeredTexture.Editor
         {
             LayeredTextureBakeUtility.Release(previewTexture);
             previewTexture = null;
-        }
-
-        void ReleaseLayerPreviews()
-        {
-            foreach (var preview in layerPreviews.Values)
-                LayeredTextureBakeUtility.Release(preview);
-
-            layerPreviews.Clear();
-        }
-
-        RenderTexture GetLayerPreview(int index, TextureLayerBase layer)
-        {
-            if (layerPreviews.TryGetValue(index, out var preview))
-                return preview;
-
-            preview = TextureLayerPreviewEvaluator.EvaluateRaw(recipe, layer);
-            layerPreviews[index] = preview;
-            return preview;
-        }
-
-        void DrawTextureSource(Rect rect, SerializedProperty source, string _)
-        {
-            var kind = source.FindPropertyRelative("Kind");
-            var modeRect = new Rect(rect.x, rect.y, 84f, rect.height);
-            var contentRect = new Rect(modeRect.xMax + 4f, rect.y, rect.width - modeRect.width - 4f, rect.height);
-
-            EditorGUI.PropertyField(modeRect, kind, GUIContent.none);
-
-            if ((TextureSourceKind)kind.enumValueIndex == TextureSourceKind.File)
-            {
-                DrawTexturePathSource(contentRect, source);
-                return;
-            }
-
-            var currentTexture = source.FindPropertyRelative("RuntimeTexture").objectReferenceValue as Texture;
-
-            EditorGUI.BeginChangeCheck();
-            var texture = (Texture)EditorGUI.ObjectField(contentRect, GUIContent.none, currentTexture, typeof(Texture), false);
-
-            if (EditorGUI.EndChangeCheck())
-                AssignTextureSource(source, texture);
-        }
-
-        void DrawTexturePathSource(Rect rect, SerializedProperty source)
-        {
-            var path = ReadAssetPath(source.FindPropertyRelative("Path"));
-            var valid = TextureRecipeEditorSourceResolver.Instance.TryResolve(recipe, ReadTextureSource(source), out _);
-            var buttonRect = new Rect(rect.xMax - 48f, rect.y, 48f, rect.height);
-            var pathRect = new Rect(rect.x, rect.y, rect.width - 52f, rect.height);
-            var tint = valid
-                ? new Color(0.34f, 0.62f, 0.34f, EditorGUIUtility.isProSkin ? 0.22f : 0.14f)
-                : new Color(0.72f, 0.32f, 0.32f, EditorGUIUtility.isProSkin ? 0.22f : 0.14f);
-
-            EditorGUI.DrawRect(pathRect, tint);
-
-            using (new EditorGUI.DisabledScope(true))
-                EditorGUI.TextField(pathRect, path.Path ?? string.Empty);
-
-            if (GUI.Button(buttonRect, "Pick"))
-                PickRelativeTexture(source.propertyPath);
-        }
-
-        void PickRelativeTexture(string sourcePropertyPath)
-        {
-            RelativeTexturePickerWindow.Show(relativePath =>
-            {
-                serializedObject.Update();
-                var source = serializedObject.FindProperty(sourcePropertyPath);
-                AssignTextureSource(source, AssetPath.Relative(relativePath));
-                serializedObject.ApplyModifiedProperties();
-                MarkPreviewDirty();
-            });
-        }
-
-        static void DrawNoiseFields(ref Rect rect, SerializedProperty layer)
-        {
-            DrawNoiseRow(
-                NextLine(ref rect),
-                layer.FindPropertyRelative("NoiseType"),
-                "Type",
-                layer.FindPropertyRelative("Fractal"),
-                "Fractal",
-                layer.FindPropertyRelative("Seed"),
-                "Seed");
-            DrawNoiseScaleRow(
-                NextLine(ref rect),
-                layer.FindPropertyRelative("Scale"),
-                layer.FindPropertyRelative("Rotation"));
-            DrawNoiseOffsetRow(
-                NextLine(ref rect),
-                layer.FindPropertyRelative("Offset"));
-
-            var fractal = layer.FindPropertyRelative("Fractal");
-
-            using (new EditorGUI.DisabledScope((NoiseFractal)fractal.enumValueIndex == NoiseFractal.None))
-            {
-                DrawNoiseRow(
-                    NextLine(ref rect),
-                    layer.FindPropertyRelative("Octaves"),
-                    "Octaves",
-                    layer.FindPropertyRelative("Lacunarity"),
-                    "Lacunarity",
-                    layer.FindPropertyRelative("Gain"),
-                    "Gain");
-            }
-
-            DrawNoiseRow(
-                NextLine(ref rect),
-                layer.FindPropertyRelative("Contrast"),
-                "Contrast",
-                layer.FindPropertyRelative("Brightness"),
-                "Brightness",
-                layer.FindPropertyRelative("Invert"),
-                "Invert");
-        }
-
-        static void DrawWarpFields(ref Rect rect, SerializedProperty layer)
-        {
-            DrawNoiseRow(
-                NextLine(ref rect),
-                layer.FindPropertyRelative("Strength"),
-                "Strength",
-                layer.FindPropertyRelative("Scale"),
-                "Scale",
-                layer.FindPropertyRelative("Seed"),
-                "Seed");
-            DrawLabeledField(NextLine(ref rect), layer.FindPropertyRelative("Octaves"), "Octaves");
-        }
-
-        static void DrawWaterWavesFields(ref Rect rect, SerializedProperty layer)
-        {
-            DrawNoiseRow(
-                NextLine(ref rect),
-                layer.FindPropertyRelative("OutputMode"),
-                "Output",
-                layer.FindPropertyRelative("Seed"),
-                "Seed",
-                layer.FindPropertyRelative("WaveCount"),
-                "Waves");
-            DrawNoiseRow(
-                NextLine(ref rect),
-                layer.FindPropertyRelative("WindDirection"),
-                "Direction",
-                layer.FindPropertyRelative("DirectionSpread"),
-                "Spread",
-                layer.FindPropertyRelative("Phase"),
-                "Phase");
-            DrawVector2Row(
-                NextLine(ref rect),
-                layer.FindPropertyRelative("CycleRange"),
-                "Min Cycles",
-                "Max Cycles");
-            DrawNoiseRow(
-                NextLine(ref rect),
-                layer.FindPropertyRelative("Amplitude"),
-                "Amplitude",
-                layer.FindPropertyRelative("AmplitudeFalloff"),
-                "Falloff",
-                layer.FindPropertyRelative("Choppiness"),
-                "Chop");
-
-            if (IsWaterWavesFoam(layer))
-                DrawNoiseRow(
-                    NextLine(ref rect),
-                    layer.FindPropertyRelative("FoamThreshold"),
-                    "Foam Threshold",
-                    layer.FindPropertyRelative("FoamSoftness"),
-                    "Foam Softness");
-
-            DrawNoiseRow(
-                NextLine(ref rect),
-                layer.FindPropertyRelative("Contrast"),
-                "Contrast",
-                layer.FindPropertyRelative("Brightness"),
-                "Brightness",
-                layer.FindPropertyRelative("Invert"),
-                "Invert");
-        }
-
-        static bool IsWaterWavesFoam(SerializedProperty layer) =>
-            (WaterWavesOutputMode)layer.FindPropertyRelative("OutputMode").enumValueIndex == WaterWavesOutputMode.Foam;
-
-        void DrawMaskRow(Rect rect, SerializedProperty mask)
-        {
-            if (mask == null)
-                return;
-
-            var recipe = mask.FindPropertyRelative("RecipeReference");
-            var usage = mask.FindPropertyRelative("Usage");
-            var invert = mask.FindPropertyRelative("Invert");
-            var opacity = mask.FindPropertyRelative("Opacity");
-            var labelRect = new Rect(rect.x, rect.y, 34f, rect.height);
-            var opacityRect = new Rect(rect.xMax - 88f, rect.y, 88f, rect.height);
-            var invertRect = new Rect(opacityRect.x - 42f, rect.y, 38f, rect.height);
-            var usageRect = new Rect(invertRect.x - 82f, rect.y, 78f, rect.height);
-            var recipeRect = new Rect(labelRect.xMax + 4f, rect.y, usageRect.x - labelRect.xMax - 8f, rect.height);
-
-            EditorGUI.LabelField(labelRect, "Mask");
-            EditorGUI.PropertyField(recipeRect, recipe, GUIContent.none);
-            EditorGUI.PropertyField(usageRect, usage, GUIContent.none);
-            invert.boolValue = GUI.Toggle(invertRect, invert.boolValue, "Inv");
-            opacity.floatValue = EditorGUI.Slider(opacityRect, GUIContent.none, opacity.floatValue, 0f, 1f);
-        }
-
-        Texture ResolveTexture(SerializedProperty source)
-        {
-            var kind = (TextureSourceKind)source.FindPropertyRelative("Kind").enumValueIndex;
-
-            if (kind == TextureSourceKind.RuntimeTextureReference)
-                return source.FindPropertyRelative("RuntimeTexture").objectReferenceValue as Texture;
-
-            var textureSource = ReadTextureSource(source);
-            return TextureRecipeEditorSourceResolver.Instance.TryResolve(recipe, textureSource, out var texture)
-                ? texture
-                : null;
-        }
-
-        void AssignTextureSource(SerializedProperty source, Texture texture)
-        {
-            var kind = source.FindPropertyRelative("Kind");
-            var path = source.FindPropertyRelative("Path");
-            var runtimeTexture = source.FindPropertyRelative("RuntimeTexture");
-
-            WriteAssetPath(path, default);
-            runtimeTexture.objectReferenceValue = null;
-
-            if (texture == null)
-            {
-                kind.enumValueIndex = (int)TextureSourceKind.RuntimeTextureReference;
-                return;
-            }
-
-            var assetPath = AssetDatabase.GetAssetPath(texture);
-
-            if (!string.IsNullOrEmpty(assetPath)
-                && (TextureRecipeEditorSourceResolver.TryMakeSourcePath(
-                        assetPath,
-                        AssetPathMode.Relative,
-                        out var sourcePath)
-                    || TextureRecipeEditorSourceResolver.TryMakeSourcePath(
-                        assetPath,
-                        AssetPathMode.Absolute,
-                        out sourcePath)))
-            {
-                kind.enumValueIndex = (int)TextureSourceKind.File;
-                WriteAssetPath(path, sourcePath);
-                return;
-            }
-
-            kind.enumValueIndex = (int)TextureSourceKind.RuntimeTextureReference;
-            runtimeTexture.objectReferenceValue = texture;
-        }
-
-        static void AssignTextureSource(SerializedProperty source, AssetPath assetPath)
-        {
-            source.FindPropertyRelative("Kind").enumValueIndex = (int)TextureSourceKind.File;
-            WriteAssetPath(source.FindPropertyRelative("Path"), assetPath);
-            source.FindPropertyRelative("RuntimeTexture").objectReferenceValue = null;
-        }
-
-        static void DrawNoiseScaleRow(Rect rect, SerializedProperty scale, SerializedProperty rotation)
-        {
-            const float Gap = 8f;
-            var width = (rect.width - Gap * 2f) / 3f;
-            var value = scale.vector2Value;
-
-            EditorGUI.BeginChangeCheck();
-            value.x = DrawFloatField(new Rect(rect.x, rect.y, width, rect.height), "Scale X", value.x);
-            value.y = DrawFloatField(new Rect(rect.x + width + Gap, rect.y, width, rect.height), "Scale Y", value.y);
-
-            if (EditorGUI.EndChangeCheck())
-                scale.vector2Value = value;
-
-            DrawLabeledField(new Rect(rect.x + (width + Gap) * 2f, rect.y, width, rect.height), rotation, "Rotation");
-        }
-
-        static void DrawNoiseOffsetRow(Rect rect, SerializedProperty offset)
-        {
-            const float Gap = 8f;
-            var width = (rect.width - Gap) * 0.5f;
-            var value = offset.vector2Value;
-
-            EditorGUI.BeginChangeCheck();
-            value.x = DrawFloatField(new Rect(rect.x, rect.y, width, rect.height), "Offset X", value.x);
-            value.y = DrawFloatField(
-                new Rect(rect.x + width + Gap, rect.y, width, rect.height),
-                "Offset Y",
-                value.y);
-
-            if (EditorGUI.EndChangeCheck())
-                offset.vector2Value = value;
-        }
-
-        static void DrawVector2Row(Rect rect, SerializedProperty property, string xLabel, string yLabel)
-        {
-            const float Gap = 8f;
-            var width = (rect.width - Gap) * 0.5f;
-            var value = property.vector2Value;
-
-            EditorGUI.BeginChangeCheck();
-            value.x = DrawFloatField(new Rect(rect.x, rect.y, width, rect.height), xLabel, value.x);
-            value.y = DrawFloatField(
-                new Rect(rect.x + width + Gap, rect.y, width, rect.height),
-                yLabel,
-                value.y);
-
-            if (EditorGUI.EndChangeCheck())
-                property.vector2Value = value;
-        }
-
-        static void DrawNoiseRow(
-            Rect rect,
-            SerializedProperty first,
-            string firstLabel,
-            SerializedProperty second,
-            string secondLabel)
-        {
-            const float Gap = 8f;
-            var width = (rect.width - Gap) * 0.5f;
-            DrawLabeledField(new Rect(rect.x, rect.y, width, rect.height), first, firstLabel);
-            DrawLabeledField(new Rect(rect.x + width + Gap, rect.y, width, rect.height), second, secondLabel);
-        }
-
-        static void DrawNoiseRow(
-            Rect rect,
-            SerializedProperty first,
-            string firstLabel,
-            SerializedProperty second,
-            string secondLabel,
-            SerializedProperty third,
-            string thirdLabel)
-        {
-            const float Gap = 8f;
-            var width = (rect.width - Gap * 2f) / 3f;
-            DrawLabeledField(new Rect(rect.x, rect.y, width, rect.height), first, firstLabel);
-            DrawLabeledField(new Rect(rect.x + width + Gap, rect.y, width, rect.height), second, secondLabel);
-            DrawLabeledField(new Rect(rect.x + (width + Gap) * 2f, rect.y, width, rect.height), third, thirdLabel);
-        }
-
-        static float DrawFloatField(Rect rect, string label, float value)
-        {
-            var previousWidth = EditorGUIUtility.labelWidth;
-            EditorGUIUtility.labelWidth = Mathf.Min(LabelWidth, rect.width * 0.45f);
-            var result = EditorGUI.FloatField(rect, label, value);
-            EditorGUIUtility.labelWidth = previousWidth;
-            return result;
-        }
-
-        static TextureSource ReadTextureSource(SerializedProperty source) => new()
-        {
-            Kind = (TextureSourceKind)source.FindPropertyRelative("Kind").enumValueIndex,
-            Path = ReadAssetPath(source.FindPropertyRelative("Path")),
-            RuntimeTexture = source.FindPropertyRelative("RuntimeTexture").objectReferenceValue as Texture
-        };
-
-        static AssetPath ReadAssetPath(SerializedProperty path) => new()
-        {
-            Mode = (AssetPathMode)path.FindPropertyRelative("Mode").enumValueIndex,
-            Path = path.FindPropertyRelative("Path").stringValue
-        };
-
-        static void WriteAssetPath(SerializedProperty path, AssetPath assetPath)
-        {
-            path.FindPropertyRelative("Mode").enumValueIndex = (int)assetPath.Mode;
-            path.FindPropertyRelative("Path").stringValue = assetPath.Path;
-        }
-
-        static Rect NextLine(ref Rect rect)
-        {
-            var line = new Rect(rect.x, rect.y, rect.width, LineHeight);
-            rect.y += LineHeight + Spacing;
-            return line;
-        }
-
-        static void DrawLabeledField(Rect rect, SerializedProperty property, string label)
-        {
-            var previousWidth = EditorGUIUtility.labelWidth;
-            EditorGUIUtility.labelWidth = Mathf.Min(LabelWidth, rect.width * 0.45f);
-            EditorGUI.PropertyField(rect, property, new GUIContent(label));
-            EditorGUIUtility.labelWidth = previousWidth;
-        }
-
-        static Rect Inset(Rect rect, float x, float y) =>
-            new(rect.x + x, rect.y + y, rect.width - x * 2f, rect.height - y * 2f);
-
-        static bool ContainsVertically(Rect outer, Rect inner) =>
-            inner.yMin >= outer.yMin
-            && inner.yMax <= outer.yMax;
-
-        static Rect ToScreenRect(Rect rect)
-        {
-            var min = GUIUtility.GUIToScreenPoint(new Vector2(rect.xMin, rect.yMin));
-            var max = GUIUtility.GUIToScreenPoint(new Vector2(rect.xMax, rect.yMax));
-            return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
-        }
-
-        static string LayerName(SerializedProperty layer)
-        {
-            return layer.managedReferenceValue switch
-            {
-                SolidColorLayer => "Solid Color",
-                TextureFileLayer => "Texture File",
-                NoiseLayer => "Noise",
-                WarpLayer => "Warp",
-                WaterWavesLayer => "Water Waves",
-                NormalFromHeightLayer => "Normal From Height",
-                RecipeReferenceLayer => "Recipe Reference",
-                _ => layer.managedReferenceValue.GetType().Name
-            };
         }
 
         static TexturePreviewDisplayMode LoadPreviewDisplayMode()

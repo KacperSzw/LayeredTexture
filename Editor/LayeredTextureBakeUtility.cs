@@ -61,16 +61,19 @@ namespace Unmanaged.LayeredTexture.Editor
             return true;
         }
 
-        internal static Texture2D ReadBack(RenderTexture renderTexture, TextureFormat format)
+        internal static Texture2D ReadBack(RenderTexture renderTexture, TextureFormat format) =>
+            ReadBack(renderTexture, format, false);
+
+        internal static Texture2D ReadBack(RenderTexture renderTexture, TextureFormat format, bool mipChain)
         {
-            var texture = new Texture2D(renderTexture.width, renderTexture.height, format, false, true);
+            var texture = new Texture2D(renderTexture.width, renderTexture.height, format, mipChain, true);
             var active = RenderTexture.active;
 
             try
             {
                 RenderTexture.active = renderTexture;
                 texture.ReadPixels(new Rect(0, 0, renderTexture.width, renderTexture.height), 0, 0);
-                texture.Apply(false, false);
+                texture.Apply(mipChain, false);
                 return texture;
             }
             finally
