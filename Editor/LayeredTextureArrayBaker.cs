@@ -28,7 +28,7 @@ namespace Unmanaged.LayeredTexture.Editor
             }
 
             if (!ValidateOutput(array.Output, out error)
-                || !TryGetOutputPath(array.Output, out var assetPath, out var fullPath, out error)
+                || !TryGetOutputPath(array, out var assetPath, out _, out error)
                 || !ValidatePages(array, out error))
                 return false;
 
@@ -62,7 +62,6 @@ namespace Unmanaged.LayeredTexture.Editor
                 }
 
                 textureArray = CreateTextureArray(array, textures);
-                Directory.CreateDirectory(Path.GetDirectoryName(fullPath));
 
                 if (!SaveTextureArray(textureArray, assetPath, out error))
                     return false;
@@ -143,20 +142,29 @@ namespace Unmanaged.LayeredTexture.Editor
             return true;
         }
 
-        static bool TryGetOutputPath(
-            TextureArrayOutputProfile output,
+        internal static bool TryGetOutputPath(
+            LayeredTextureArray array,
             out string assetPath,
             out string fullPath,
-            out string error) =>
-            LayeredTextureBakeUtility.TryGetOutputPath(
-                output.OutputPath,
-                "LayeredTextureArray.Output.OutputPath",
-                ".asset",
-                null,
-                null,
-                out assetPath,
-                out fullPath,
-                out error);
+            out string error)
+        {
+            assetPath = null;
+            fullPath = null;
+            error = null;
+
+            var arrayPath = AssetDatabase.GetAssetPath(array);
+
+            if (string.IsNullOrEmpty(arrayPath))
+            {
+                error = "LayeredTextureArray asset must be saved before baking.";
+                return false;
+            }
+
+            assetPath = arrayPath.Replace('\\', '/');
+            var projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            fullPath = Path.GetFullPath(Path.Combine(projectRoot, assetPath));
+            return true;
+        }
 
         static Texture2DArray CreateTextureArray(LayeredTextureArray array, Texture2D[] textures)
         {
@@ -169,7 +177,7 @@ namespace Unmanaged.LayeredTexture.Editor
                 output.GenerateMips,
                 !output.SRGB)
             {
-                name = Path.GetFileNameWithoutExtension(output.OutputPath),
+                name = array.name,
                 wrapMode = TextureWrapMode.Repeat,
                 filterMode = FilterMode.Bilinear
             };
@@ -184,23 +192,30 @@ namespace Unmanaged.LayeredTexture.Editor
         static bool SaveTextureArray(Texture2DArray textureArray, string assetPath, out string error)
         {
             error = null;
-            var existingAsset = AssetDatabase.LoadMainAssetAtPath(assetPath);
+            var existingArray = FindExistingTextureArray(assetPath, textureArray.name);
 
-            if (existingAsset == null)
+            if (existingArray == null)
             {
-                AssetDatabase.CreateAsset(textureArray, assetPath);
+                AssetDatabase.AddObjectToAsset(textureArray, assetPath);
                 return true;
-            }
-
-            if (existingAsset is not Texture2DArray existingArray)
-            {
-                error = "LayeredTextureArray.Output.OutputPath already contains a non-Texture2DArray asset.";
-                return false;
             }
 
             EditorUtility.CopySerialized(textureArray, existingArray);
             EditorUtility.SetDirty(existingArray);
             return true;
+        }
+
+        static Texture2DArray FindExistingTextureArray(string assetPath, string name)
+        {
+            var assets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+
+            for (var i = 0; i < assets.Length; i++)
+            {
+                if (assets[i] is Texture2DArray textureArray && textureArray.name == name)
+                    return textureArray;
+            }
+
+            return null;
         }
     }
 }

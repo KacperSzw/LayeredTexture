@@ -173,6 +173,8 @@ namespace Unmanaged.LayeredTexture
                     return TextureFileLayer.TryGetShaderKernel(out _, out _, out error);
                 case NoiseLayer:
                     return NoiseLayer.TryGetShaderKernel(out _, out _, out error);
+                case WarpLayer:
+                    return WarpLayer.TryGetShaderKernel(out _, out _, out error);
                 case NormalFromHeightLayer:
                     return NormalFromHeightLayer.TryGetShaderKernel(out _, out _, out error);
                 case WaterWavesLayer:

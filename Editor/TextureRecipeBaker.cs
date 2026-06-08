@@ -26,7 +26,7 @@ namespace Unmanaged.LayeredTexture.Editor
                 return false;
             }
 
-            if (!TryGetOutputPath(recipe.Output, out var assetPath, out var fullPath, out error))
+            if (!TryGetOutputPath(recipe, out var assetPath, out var fullPath, out error))
                 return false;
 
             RenderTexture renderTexture = null;
@@ -78,16 +78,39 @@ namespace Unmanaged.LayeredTexture.Editor
                 _ => null
             };
 
-        static bool TryGetOutputPath(OutputProfile output, out string assetPath, out string fullPath, out string error) =>
-            LayeredTextureBakeUtility.TryGetOutputPath(
-                output.OutputPath,
-                "TextureRecipe.Output.OutputPath",
-                ExtensionFor(output.ExportFormat),
-                output.ExportFormat.ToString(),
-                $"TextureRecipe.Output.ExportFormat is unsupported: {output.ExportFormat}.",
-                out assetPath,
-                out fullPath,
-                out error);
+        internal static bool TryGetOutputPath(
+            TextureRecipe recipe,
+            out string assetPath,
+            out string fullPath,
+            out string error)
+        {
+            assetPath = null;
+            fullPath = null;
+            error = null;
+
+            var recipePath = AssetDatabase.GetAssetPath(recipe);
+
+            if (string.IsNullOrEmpty(recipePath))
+            {
+                error = "TextureRecipe asset must be saved before baking.";
+                return false;
+            }
+
+            recipePath = recipePath.Replace('\\', '/');
+
+            var extension = ExtensionFor(recipe.Output.ExportFormat);
+
+            if (extension == null)
+            {
+                error = $"TextureRecipe.Output.ExportFormat is unsupported: {recipe.Output.ExportFormat}.";
+                return false;
+            }
+
+            assetPath = Path.ChangeExtension(recipePath, extension).Replace('\\', '/');
+            var projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            fullPath = Path.GetFullPath(Path.Combine(projectRoot, assetPath));
+            return true;
+        }
 
         static TextureFormat TextureFormatFor(ExportFileFormat format) =>
             format == ExportFileFormat.EXR ? TextureFormat.RGBAFloat : TextureFormat.RGBA32;

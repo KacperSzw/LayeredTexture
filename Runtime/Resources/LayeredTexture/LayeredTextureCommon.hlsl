@@ -7,6 +7,7 @@
 #define LT_BLEND_MULTIPLY 3
 #define LT_BLEND_MIN 4
 #define LT_BLEND_MAX 5
+#define LT_BLEND_SUBTRACT 6
 
 #define LT_WRITE_R 1
 #define LT_WRITE_G 2
@@ -32,6 +33,9 @@ float4 LT_Blend(float4 previous, float4 candidate, uint blendMode)
 {
     if (blendMode == LT_BLEND_ADD)
         return previous + candidate;
+
+    if (blendMode == LT_BLEND_SUBTRACT)
+        return previous - candidate;
 
     if (blendMode == LT_BLEND_MULTIPLY)
         return previous * candidate;

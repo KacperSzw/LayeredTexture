@@ -18,9 +18,6 @@ namespace Unmanaged.LayeredTexture
         public int Octaves = 4;
         public float Lacunarity = 2f;
         public float Gain = 0.5f;
-        public float WarpStrength;
-        public float WarpScale = 4f;
-        public int WarpOctaves = 2;
         public bool Invert;
         public float Contrast = 1f;
         public float Brightness;
@@ -53,11 +50,6 @@ namespace Unmanaged.LayeredTexture
                 Octaves,
                 Lacunarity,
                 Gain,
-                0f));
-            shader.SetVector(LayerCompute.NoiseWarpSettingsId, new Vector4(
-                WarpStrength,
-                WarpScale,
-                WarpOctaves,
                 0f));
             shader.SetVector(LayerCompute.NoiseOutputSettingsId, new Vector4(
                 Contrast,

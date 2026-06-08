@@ -16,7 +16,6 @@ public sealed class TextureRecipeValidatorTests
         Assert.That(recipe.Output.WorkingFormat, Is.EqualTo(GraphicsFormat.R16G16B16A16_UNorm));
         Assert.That(recipe.Output.OutputGraphicsFormat, Is.EqualTo(GraphicsFormat.R8G8B8A8_UNorm));
         Assert.That(recipe.Output.ExportFormat, Is.EqualTo(ExportFileFormat.PNG));
-        Assert.That(recipe.Output.OutputPath, Is.Null);
         Assert.That(recipe.Output.GenerateMips, Is.False);
         Assert.That(recipe.Output.SRGB, Is.False);
 
@@ -144,6 +143,20 @@ public sealed class TextureRecipeValidatorTests
 
         var recipe = CreateRecipe(1, 1);
         recipe.RootStack.Layers.Add(new NormalFromHeightLayer());
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void ValidateRuntime_WarpLayer_IsValid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(1, 1);
+        recipe.RootStack.Layers.Add(new WarpLayer());
 
         Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
         LogAssert.NoUnexpectedReceived();

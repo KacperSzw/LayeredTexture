@@ -17,7 +17,7 @@ namespace Unmanaged.LayeredTexture
         public LayerStack RootStack = new();
 
         /// <summary>
-        /// Output resolution, working format, file path, export format, and import settings.
+        /// Output resolution, working format, export format, and import settings.
         /// </summary>
         public OutputProfile Output = OutputProfile.Default;
     }
@@ -60,11 +60,6 @@ namespace Unmanaged.LayeredTexture
         /// File format used by the editor bake pipeline.
         /// </summary>
         public ExportFileFormat ExportFormat;
-
-        /// <summary>
-        /// Project-relative Assets path for baked output.
-        /// </summary>
-        public string OutputPath;
 
         /// <summary>
         /// Whether the generated asset importer should generate mipmaps.

@@ -18,12 +18,10 @@ public sealed class TextureLayerPreviewEvaluatorTests
     }
 
     [Test]
-    public void NormalFromHeight_IsProcessorWithoutRawPreview()
+    public void ProcessorLayers_HaveProcessorRoleWithoutRawPreview()
     {
-        var layer = new NormalFromHeightLayer();
-
-        Assert.That(layer.Role, Is.EqualTo(TextureLayerRole.Processor));
-        Assert.That(layer.SupportsRawPreview, Is.False);
+        AssertProcessorLayer(new NormalFromHeightLayer());
+        AssertProcessorLayer(new WarpLayer());
     }
 
     [Test]
@@ -194,6 +192,12 @@ public sealed class TextureLayerPreviewEvaluatorTests
     {
         Assert.That(layer.Role, Is.EqualTo(TextureLayerRole.Source));
         Assert.That(layer.SupportsRawPreview, Is.True);
+    }
+
+    static void AssertProcessorLayer(TextureLayerBase layer)
+    {
+        Assert.That(layer.Role, Is.EqualTo(TextureLayerRole.Processor));
+        Assert.That(layer.SupportsRawPreview, Is.False);
     }
 
     static TextureRecipe CreateRecipe() => CreateRecipe(2, 2);

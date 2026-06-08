@@ -39,11 +39,6 @@ namespace Unmanaged.LayeredTexture
         public GraphicsFormat WorkingFormat;
 
         /// <summary>
-        /// Project-relative Assets path for the baked Texture2DArray asset.
-        /// </summary>
-        public string OutputPath;
-
-        /// <summary>
         /// Whether the generated Texture2DArray should contain mipmaps.
         /// </summary>
         public bool GenerateMips;

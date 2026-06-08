@@ -36,7 +36,6 @@ public sealed class LayeredTextureArrayBakerTests
         {
             Assert.That(array.Output.Resolution, Is.EqualTo(new Vector2Int(1024, 1024)));
             Assert.That(array.Output.WorkingFormat, Is.EqualTo(GraphicsFormat.R16G16B16A16_UNorm));
-            Assert.That(array.Output.OutputPath, Is.Null);
             Assert.That(array.Output.GenerateMips, Is.False);
             Assert.That(array.Output.SRGB, Is.False);
             Assert.That(array.Pages, Is.Empty);
@@ -63,7 +62,7 @@ public sealed class LayeredTextureArrayBakerTests
         {
             Assert.That(LayeredTextureArrayBaker.Bake(array, out var error), Is.True, error);
 
-            var textureArray = AssetDatabase.LoadAssetAtPath<Texture2DArray>(Path);
+            var textureArray = LoadBakedArray(Path, array.name);
             Assert.That(textureArray, Is.Not.Null);
             Assert.That(textureArray.width, Is.EqualTo(2));
             Assert.That(textureArray.height, Is.EqualTo(2));
@@ -75,7 +74,7 @@ public sealed class LayeredTextureArrayBakerTests
         {
             Object.DestroyImmediate(first);
             Object.DestroyImmediate(second);
-            Object.DestroyImmediate(array);
+            DestroyArray(array);
         }
     }
 
@@ -94,7 +93,7 @@ public sealed class LayeredTextureArrayBakerTests
         {
             Assert.That(LayeredTextureArrayBaker.Bake(array, out var error), Is.True, error);
 
-            var textureArray = AssetDatabase.LoadAssetAtPath<Texture2DArray>(Path);
+            var textureArray = LoadBakedArray(Path, array.name);
             Assert.That(textureArray, Is.Not.Null);
             Assert.That(textureArray.width, Is.EqualTo(4));
             Assert.That(textureArray.height, Is.EqualTo(2));
@@ -103,7 +102,7 @@ public sealed class LayeredTextureArrayBakerTests
         finally
         {
             Object.DestroyImmediate(recipe);
-            Object.DestroyImmediate(array);
+            DestroyArray(array);
         }
     }
 
@@ -130,14 +129,14 @@ public sealed class LayeredTextureArrayBakerTests
         {
             Assert.That(LayeredTextureArrayBaker.Bake(array, out var error), Is.True, error);
 
-            var textureArray = AssetDatabase.LoadAssetAtPath<Texture2DArray>(Path);
+            var textureArray = LoadBakedArray(Path, array.name);
             Assert.That(textureArray, Is.Not.Null);
             AssertArrayPixels(textureArray, 0, new Color(0.2f, 0.6f, 0.8f, 1f));
         }
         finally
         {
             Object.DestroyImmediate(recipe);
-            Object.DestroyImmediate(array);
+            DestroyArray(array);
         }
     }
 
@@ -153,7 +152,7 @@ public sealed class LayeredTextureArrayBakerTests
         }
         finally
         {
-            Object.DestroyImmediate(array);
+            DestroyArray(array);
         }
     }
 
@@ -170,12 +169,12 @@ public sealed class LayeredTextureArrayBakerTests
         }
         finally
         {
-            Object.DestroyImmediate(array);
+            DestroyArray(array);
         }
     }
 
     [Test]
-    public void Bake_MissingOutputPath_Fails()
+    public void Bake_UnsavedArray_Fails()
     {
         var array = ScriptableObject.CreateInstance<LayeredTextureArray>();
         array.Pages.Add(CreateSolidRecipe(Color.white));
@@ -183,43 +182,7 @@ public sealed class LayeredTextureArrayBakerTests
         try
         {
             Assert.That(LayeredTextureArrayBaker.Bake(array, out var error), Is.False);
-            Assert.That(error, Is.EqualTo("LayeredTextureArray.Output.OutputPath is missing."));
-        }
-        finally
-        {
-            Object.DestroyImmediate(array.Pages[0]);
-            Object.DestroyImmediate(array);
-        }
-    }
-
-    [Test]
-    public void Bake_PathOutsideAssets_Fails()
-    {
-        var array = CreateArray("Temp/Array.asset", 2, 2);
-        array.Pages.Add(CreateSolidRecipe(Color.white));
-
-        try
-        {
-            Assert.That(LayeredTextureArrayBaker.Bake(array, out var error), Is.False);
-            Assert.That(error, Is.EqualTo("LayeredTextureArray.Output.OutputPath must be under Assets/."));
-        }
-        finally
-        {
-            Object.DestroyImmediate(array.Pages[0]);
-            Object.DestroyImmediate(array);
-        }
-    }
-
-    [Test]
-    public void Bake_NonAssetExtension_Fails()
-    {
-        var array = CreateArray(TestFolder + "/Array.png", 2, 2);
-        array.Pages.Add(CreateSolidRecipe(Color.white));
-
-        try
-        {
-            Assert.That(LayeredTextureArrayBaker.Bake(array, out var error), Is.False);
-            Assert.That(error, Is.EqualTo("LayeredTextureArray.Output.OutputPath extension must be .asset."));
+            Assert.That(error, Is.EqualTo("LayeredTextureArray asset must be saved before baking."));
         }
         finally
         {
@@ -247,7 +210,7 @@ public sealed class LayeredTextureArrayBakerTests
         finally
         {
             Object.DestroyImmediate(recipe);
-            Object.DestroyImmediate(array);
+            DestroyArray(array);
         }
     }
 
@@ -255,8 +218,20 @@ public sealed class LayeredTextureArrayBakerTests
     {
         var array = ScriptableObject.CreateInstance<LayeredTextureArray>();
         array.Output.Resolution = new Vector2Int(width, height);
-        array.Output.OutputPath = path;
+        Directory.CreateDirectory(Path.GetDirectoryName(FullPath(path)));
+        AssetDatabase.CreateAsset(array, path);
+        AssetDatabase.SaveAssets();
         return array;
+    }
+
+    static void DestroyArray(LayeredTextureArray array)
+    {
+        var path = AssetDatabase.GetAssetPath(array);
+
+        if (!string.IsNullOrEmpty(path))
+            AssetDatabase.DeleteAsset(path);
+        else
+            Object.DestroyImmediate(array);
     }
 
     static TextureRecipe CreateSolidRecipe(Color color)
@@ -295,6 +270,19 @@ public sealed class LayeredTextureArrayBakerTests
     {
         foreach (var pixel in textureArray.GetPixels(page))
             AssertColor(pixel, expected);
+    }
+
+    static Texture2DArray LoadBakedArray(string assetPath, string name)
+    {
+        var assets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+
+        for (var i = 0; i < assets.Length; i++)
+        {
+            if (assets[i] is Texture2DArray textureArray && textureArray.name == name)
+                return textureArray;
+        }
+
+        return null;
     }
 
     static void AssertColor(Color actual, Color expected)

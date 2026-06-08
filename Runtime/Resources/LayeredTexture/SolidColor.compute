@@ -1,6 +1,7 @@
 #pragma kernel SolidColor
 #pragma kernel TextureFile
 #pragma kernel Noise
+#pragma kernel Warp
 #pragma kernel NormalFromHeight
 #pragma kernel WaterWaves
 
@@ -19,8 +20,8 @@ float4 _NoiseSettings;
 float4 _NoiseTransform;
 float _NoiseRotation;
 float4 _NoiseFractalSettings;
-float4 _NoiseWarpSettings;
 float4 _NoiseOutputSettings;
+float4 _WarpSettings;
 uint _HeightUsage;
 float _NormalStrength;
 float4 _WaterWaveSettings;
@@ -199,7 +200,7 @@ float LT_FractalNoise(uint type, uint fractal, float2 p, float seed, float2 base
 
 float LT_WarpNoise(float2 p, float seed, float2 basePeriod, float baseFrequency)
 {
-    int octaves = clamp((int)round(_NoiseWarpSettings.z), 1, 8);
+    int octaves = clamp((int)round(_WarpSettings.z), 1, 8);
     float value = 0.0;
     float amplitude = 1.0;
     float amplitudeSum = 0.0;
@@ -231,17 +232,6 @@ float LT_NoiseValue(float2 uv)
     float seed = _NoiseSettings.z;
     float2 period = float2(LT_Period(_NoiseTransform.x), LT_Period(_NoiseTransform.y));
     float2 p = LT_NoisePosition(uv, period);
-    float warpStrength = _NoiseWarpSettings.x;
-
-    if (abs(warpStrength) > 0.0001)
-    {
-        float warpScale = LT_Period(_NoiseWarpSettings.y);
-        float2 warp = float2(
-            LT_WarpNoise(p + 17.13, seed + 101.0, period, warpScale),
-            LT_WarpNoise(p + 63.71, seed + 211.0, period, warpScale)) * 2.0 - 1.0;
-        p += warp * warpStrength;
-    }
-
     float value = LT_FractalNoise(type, fractal, p, seed, period);
 
     if (_NoiseSettings.w != 0.0)
@@ -266,6 +256,36 @@ int2 LT_WrapAdjacentPixel(int2 pixel, uint2 resolution)
         pixel.y -= size.y;
 
     return pixel;
+}
+
+float2 LT_WarpOffset(float2 uv)
+{
+    float strength = _WarpSettings.x;
+
+    if (abs(strength) <= 0.0001)
+        return float2(0.0, 0.0);
+
+    float scale = LT_Period(_WarpSettings.y);
+    float seed = _WarpSettings.w;
+    float2 period = float2(scale, scale);
+    float2 p = uv * period;
+    float2 warp = float2(
+        LT_WarpNoise(p + 17.13, seed + 101.0, period, 1.0),
+        LT_WarpNoise(p + 63.71, seed + 211.0, period, 1.0)) * 2.0 - 1.0;
+    return warp * strength;
+}
+
+float4 LT_SamplePreviousWrapped(float2 uv, uint2 resolution)
+{
+    float2 pixel = frac(uv) * (float2)resolution - 0.5;
+    int2 pixel0 = (int2)floor(pixel);
+    int2 pixel1 = pixel0 + 1;
+    float2 t = frac(pixel);
+    float4 a = _Previous.Load(int3(LT_WrapAdjacentPixel(pixel0, resolution), 0));
+    float4 b = _Previous.Load(int3(LT_WrapAdjacentPixel(int2(pixel1.x, pixel0.y), resolution), 0));
+    float4 c = _Previous.Load(int3(LT_WrapAdjacentPixel(int2(pixel0.x, pixel1.y), resolution), 0));
+    float4 d = _Previous.Load(int3(LT_WrapAdjacentPixel(pixel1, resolution), 0));
+    return lerp(lerp(a, b, t.x), lerp(c, d, t.x), t.y);
 }
 
 float LT_HeightValue(float4 sample, uint usage)
@@ -424,6 +444,29 @@ void Noise(uint3 id : SV_DispatchThreadID)
     _Result[id.xy] = LT_ApplyLayer(
         previous,
         value.xxxx,
+        LT_LayerMask(uv),
+        _Opacity,
+        _BlendMode,
+        (uint4)_InputSwizzle,
+        _WriteMask,
+        _RawPreview);
+}
+
+[numthreads(8, 8, 1)]
+void Warp(uint3 id : SV_DispatchThreadID)
+{
+    uint2 resolution = (uint2)_Resolution.xy;
+
+    if (id.x >= resolution.x || id.y >= resolution.y)
+        return;
+
+    int3 pixel = int3(id.xy, 0);
+    float2 uv = (id.xy + 0.5) / resolution;
+    float4 previous = _Previous.Load(pixel);
+    float4 candidate = LT_SamplePreviousWrapped(uv + LT_WarpOffset(uv), resolution);
+    _Result[id.xy] = LT_ApplyLayer(
+        previous,
+        candidate,
         LT_LayerMask(uv),
         _Opacity,
         _BlendMode,

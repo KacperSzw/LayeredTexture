@@ -59,7 +59,7 @@ public sealed class TextureRecipeBakerTests
         }
         finally
         {
-            Object.DestroyImmediate(recipe);
+            DestroyRecipe(recipe);
         }
     }
 
@@ -83,7 +83,7 @@ public sealed class TextureRecipeBakerTests
         }
         finally
         {
-            Object.DestroyImmediate(recipe);
+            DestroyRecipe(recipe);
         }
     }
 
@@ -112,7 +112,7 @@ public sealed class TextureRecipeBakerTests
         }
         finally
         {
-            Object.DestroyImmediate(recipe);
+            DestroyRecipe(recipe);
         }
     }
 
@@ -139,7 +139,7 @@ public sealed class TextureRecipeBakerTests
         }
         finally
         {
-            Object.DestroyImmediate(recipe);
+            DestroyRecipe(recipe);
         }
     }
 
@@ -166,7 +166,7 @@ public sealed class TextureRecipeBakerTests
         }
         finally
         {
-            Object.DestroyImmediate(recipe);
+            DestroyRecipe(recipe);
         }
     }
 
@@ -210,7 +210,7 @@ public sealed class TextureRecipeBakerTests
         }
         finally
         {
-            Object.DestroyImmediate(recipe);
+            DestroyRecipe(recipe);
         }
     }
 
@@ -243,7 +243,7 @@ public sealed class TextureRecipeBakerTests
         }
         finally
         {
-            Object.DestroyImmediate(recipe);
+            DestroyRecipe(recipe);
         }
     }
 
@@ -270,19 +270,19 @@ public sealed class TextureRecipeBakerTests
         }
         finally
         {
-            Object.DestroyImmediate(recipe);
+            DestroyRecipe(recipe);
         }
     }
 
     [Test]
-    public void Bake_EmptyOutputPath_Fails()
+    public void Bake_UnsavedRecipe_Fails()
     {
         var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
 
         try
         {
             Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.False);
-            Assert.That(error, Is.EqualTo("TextureRecipe.Output.OutputPath is missing."));
+            Assert.That(error, Is.EqualTo("TextureRecipe asset must be saved before baking."));
         }
         finally
         {
@@ -316,39 +316,24 @@ public sealed class TextureRecipeBakerTests
         }
         finally
         {
-            Object.DestroyImmediate(recipe);
+            DestroyRecipe(recipe);
         }
     }
 
     [Test]
-    public void Bake_PathOutsideAssets_Fails()
+    public void Bake_UnsupportedExportFormat_Fails()
     {
-        var recipe = CreateRecipe("Temp/Solid.png");
+        var recipe = CreateRecipe(TestFolder + "/Unsupported.png");
+        recipe.Output.ExportFormat = (ExportFileFormat)999;
 
         try
         {
             Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.False);
-            Assert.That(error, Is.EqualTo("TextureRecipe.Output.OutputPath must be under Assets/."));
+            Assert.That(error, Is.EqualTo("TextureRecipe.Output.ExportFormat is unsupported: 999."));
         }
         finally
         {
-            Object.DestroyImmediate(recipe);
-        }
-    }
-
-    [Test]
-    public void Bake_MismatchedExtension_Fails()
-    {
-        var recipe = CreateRecipe(TestFolder + "/Solid.tga");
-
-        try
-        {
-            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.False);
-            Assert.That(error, Is.EqualTo("TextureRecipe.Output.OutputPath extension must be .png for PNG."));
-        }
-        finally
-        {
-            Object.DestroyImmediate(recipe);
+            DestroyRecipe(recipe);
         }
     }
 
@@ -356,9 +341,21 @@ public sealed class TextureRecipeBakerTests
     {
         var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
         recipe.Output.Resolution = new Vector2Int(2, 2);
-        recipe.Output.OutputPath = path;
         recipe.Output.ExportFormat = ExportFileFormat.PNG;
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(FullPath(path)));
+        AssetDatabase.CreateAsset(recipe, System.IO.Path.ChangeExtension(path, ".asset").Replace('\\', '/'));
+        AssetDatabase.SaveAssets();
         return recipe;
+    }
+
+    static void DestroyRecipe(TextureRecipe recipe)
+    {
+        var path = AssetDatabase.GetAssetPath(recipe);
+
+        if (!string.IsNullOrEmpty(path))
+            AssetDatabase.DeleteAsset(path);
+        else
+            Object.DestroyImmediate(recipe);
     }
 
     static TextureSource RelativeFileSource(string relativePath) => new()

@@ -28,9 +28,9 @@ namespace Unmanaged.LayeredTexture.Editor
         {
             serializedObject.Update();
 
-            DrawOutput();
-            EditorGUILayout.Space(6f);
             pageList.DoLayoutList();
+            EditorGUILayout.Space(6f);
+            DrawOutput();
             serializedObject.ApplyModifiedProperties();
 
             EditorGUILayout.Space(6f);
@@ -45,35 +45,9 @@ namespace Unmanaged.LayeredTexture.Editor
             {
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("Resolution"));
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("WorkingFormat"));
-                DrawOutputPath();
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("GenerateMips"));
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("SRGB"));
             }
-        }
-
-        void DrawOutputPath()
-        {
-            var path = output.FindPropertyRelative("OutputPath");
-            var rect = EditorGUILayout.GetControlRect();
-            var buttonRect = new Rect(rect.xMax - 62f, rect.y, 62f, rect.height);
-            var pathRect = new Rect(rect.x, rect.y, rect.width - 66f, rect.height);
-
-            EditorGUI.PropertyField(pathRect, path);
-
-            if (!GUI.Button(buttonRect, "Browse"))
-                return;
-
-            var selectedPath = EditorUtility.SaveFilePanelInProject(
-                "Bake LayeredTextureArray",
-                target.name,
-                "asset",
-                "Choose texture array output asset path.");
-
-            if (string.IsNullOrEmpty(selectedPath))
-                return;
-
-            path.stringValue = selectedPath.Replace('\\', '/');
-            bakeStatus = null;
         }
 
         void DrawPage(Rect rect, int index, bool active, bool focused)
@@ -97,7 +71,13 @@ namespace Unmanaged.LayeredTexture.Editor
 
             if (LayeredTextureArrayBaker.Bake((LayeredTextureArray)target, out var error))
             {
-                bakeStatus = $"Baked {output.FindPropertyRelative("OutputPath").stringValue}";
+                bakeStatus = LayeredTextureArrayBaker.TryGetOutputPath(
+                    (LayeredTextureArray)target,
+                    out var assetPath,
+                    out _,
+                    out _)
+                    ? $"Baked {assetPath}"
+                    : "Baked.";
                 bakeStatusType = MessageType.Info;
                 return;
             }

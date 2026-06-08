@@ -46,6 +46,7 @@ public sealed class TextureRecipeEvaluatorTests
     [TestCase(BlendMode.Normal, 0.6f, 0.25f, 0.9f, 0.2f)]
     [TestCase(BlendMode.Replace, 0.6f, 0.25f, 0.9f, 0.2f)]
     [TestCase(BlendMode.Add, 0.85f, 0.75f, 1f, 0.6f)]
+    [TestCase(BlendMode.Subtract, 0f, 0.25f, 0f, 0.2f)]
     [TestCase(BlendMode.Multiply, 0.15f, 0.125f, 0.675f, 0.08f)]
     [TestCase(BlendMode.Min, 0.25f, 0.25f, 0.75f, 0.2f)]
     [TestCase(BlendMode.Max, 0.6f, 0.5f, 0.9f, 0.4f)]
@@ -73,6 +74,34 @@ public sealed class TextureRecipeEvaluatorTests
 
         Assert.That(result, Is.Not.Null);
         AssertTexturePixels(result, new Color(expectedR, expectedG, expectedB, expectedA));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_SubtractBlendMode_RespectsOpacityAndWriteMask()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe();
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.8f, 0.7f, 0.6f, 0.5f)
+        });
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.3f, 0.9f, 0.2f, 0.4f),
+            BlendMode = BlendMode.Subtract,
+            Opacity = 0.5f,
+            WriteMask = ChannelWriteMask.R | ChannelWriteMask.B
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertTexturePixels(result, new Color(0.65f, 0.7f, 0.5f, 0.5f));
         LogAssert.NoUnexpectedReceived();
 
         Release(result);
@@ -462,15 +491,13 @@ public sealed class TextureRecipeEvaluatorTests
         {
             Seed = 42,
             NoiseType = NoiseType.WorleyF1,
-            Fractal = NoiseFractal.Ridged,
-            WarpStrength = 0.25f
+            Fractal = NoiseFractal.Ridged
         });
         secondRecipe.RootStack.Layers.Add(new NoiseLayer
         {
             Seed = 42,
             NoiseType = NoiseType.WorleyF1,
-            Fractal = NoiseFractal.Ridged,
-            WarpStrength = 0.25f
+            Fractal = NoiseFractal.Ridged
         });
 
         var first = TextureRecipeEvaluator.Evaluate(firstRecipe);
@@ -523,8 +550,7 @@ public sealed class TextureRecipeEvaluatorTests
         recipe.RootStack.Layers.Add(new NoiseLayer
         {
             NoiseType = noiseType,
-            Fractal = fractal,
-            WarpStrength = 0.2f
+            Fractal = fractal
         });
 
         var result = TextureRecipeEvaluator.Evaluate(recipe);
@@ -559,14 +585,12 @@ public sealed class TextureRecipeEvaluatorTests
         Object.DestroyImmediate(recipe);
     }
 
-    [TestCase(NoiseType.Value, NoiseFractal.None, 0f)]
-    [TestCase(NoiseType.Gradient, NoiseFractal.FBM, 0f)]
-    [TestCase(NoiseType.Gradient, NoiseFractal.FBM, 0.25f)]
-    [TestCase(NoiseType.WorleyF1, NoiseFractal.Ridged, 0f)]
+    [TestCase(NoiseType.Value, NoiseFractal.None)]
+    [TestCase(NoiseType.Gradient, NoiseFractal.FBM)]
+    [TestCase(NoiseType.WorleyF1, NoiseFractal.Ridged)]
     public void Evaluate_NoiseLayer_IsContinuousAcrossTileSeams(
         NoiseType noiseType,
-        NoiseFractal fractal,
-        float warpStrength)
+        NoiseFractal fractal)
     {
         IgnoreUnsupportedCompute();
 
@@ -579,10 +603,81 @@ public sealed class TextureRecipeEvaluatorTests
             Scale = new Vector2(6f, 6f),
             Octaves = 3,
             Lacunarity = 2f,
-            Gain = 0.45f,
-            WarpStrength = warpStrength,
-            WarpScale = 3f,
-            WarpOctaves = 2
+            Gain = 0.45f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertContinuousTileSeams(result);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_WarpLayer_DistortsPreviousStack()
+    {
+        IgnoreUnsupportedCompute();
+
+        var baseRecipe = CreateRecipe(32, 32);
+        var warpedRecipe = CreateRecipe(32, 32);
+        var noise = new NoiseLayer
+        {
+            Seed = 17,
+            Scale = new Vector2(8f, 8f),
+            NoiseType = NoiseType.Gradient
+        };
+        baseRecipe.RootStack.Layers.Add(noise);
+        warpedRecipe.RootStack.Layers.Add(new NoiseLayer
+        {
+            Seed = 17,
+            Scale = new Vector2(8f, 8f),
+            NoiseType = NoiseType.Gradient
+        });
+        warpedRecipe.RootStack.Layers.Add(new WarpLayer
+        {
+            Seed = 3,
+            Strength = 0.08f,
+            Scale = 3f,
+            Octaves = 2
+        });
+
+        var baseline = TextureRecipeEvaluator.Evaluate(baseRecipe);
+        var warped = TextureRecipeEvaluator.Evaluate(warpedRecipe);
+
+        Assert.That(baseline, Is.Not.Null);
+        Assert.That(warped, Is.Not.Null);
+        Assert.That(TexturesDiffer(baseline, warped), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(baseline);
+        Release(warped);
+        Object.DestroyImmediate(baseRecipe);
+        Object.DestroyImmediate(warpedRecipe);
+    }
+
+    [Test]
+    public void Evaluate_WarpLayer_IsContinuousAcrossTileSeams()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(64, 64);
+        recipe.RootStack.Layers.Add(new NoiseLayer
+        {
+            NoiseType = NoiseType.Gradient,
+            Fractal = NoiseFractal.FBM,
+            Seed = 17,
+            Scale = new Vector2(6f, 6f),
+            Octaves = 3
+        });
+        recipe.RootStack.Layers.Add(new WarpLayer
+        {
+            Seed = 5,
+            Strength = 0.08f,
+            Scale = 3f,
+            Octaves = 2
         });
 
         var result = TextureRecipeEvaluator.Evaluate(recipe);

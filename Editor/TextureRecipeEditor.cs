@@ -20,6 +20,7 @@ namespace Unmanaged.LayeredTexture.Editor
         Rect layerPreviewScreenClipRect;
         TexturePreviewDisplayMode previewDisplayMode;
         Vector2 editScroll;
+        int removeLayerIndex = -1;
         int previewSize;
         string previewError;
         string bakeStatus;
@@ -30,11 +31,12 @@ namespace Unmanaged.LayeredTexture.Editor
         static float LayerPadding => 6f;
         static float SectionPadding => 5f;
         static float SectionGap => 4f;
-        static float HeaderHeight => 20f;
+        static float HeaderHeight => 28f;
         static float LabelWidth => 82f;
         static float PreviewRailWidth => 154f;
         static float LayerPreviewHeight => 86f;
-        static float HeaderPreviewWidth => 56f;
+        static float HeaderPreviewWidth => 74f;
+        static float RemoveButtonWidth => 22f;
         const string PreviewDisplayModeKey = "Unmanaged.LayeredTexture.PreviewDisplayMode";
         const string PreviewSizeKey = "Unmanaged.LayeredTexture.PreviewSize";
         const int MinPreviewSize = 80;
@@ -117,6 +119,7 @@ namespace Unmanaged.LayeredTexture.Editor
         {
             EditorGUI.BeginChangeCheck();
             layerList.DoLayoutList();
+            RemovePendingLayer();
             EditorGUILayout.Space(6f);
             DrawOutput();
 
@@ -140,38 +143,9 @@ namespace Unmanaged.LayeredTexture.Editor
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("WorkingFormat"));
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("OutputGraphicsFormat"));
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("ExportFormat"));
-                DrawOutputPath();
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("GenerateMips"));
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("SRGB"));
             }
-        }
-
-        void DrawOutputPath()
-        {
-            var path = output.FindPropertyRelative("OutputPath");
-            var exportFormat = output.FindPropertyRelative("ExportFormat");
-            var rect = EditorGUILayout.GetControlRect();
-            var buttonRect = new Rect(rect.xMax - 62f, rect.y, 62f, rect.height);
-            var pathRect = new Rect(rect.x, rect.y, rect.width - 66f, rect.height);
-
-            EditorGUI.PropertyField(pathRect, path);
-
-            if (!GUI.Button(buttonRect, "Browse"))
-                return;
-
-            var format = (ExportFileFormat)exportFormat.enumValueIndex;
-            var extension = TextureRecipeBaker.ExtensionFor(format)?.TrimStart('.') ?? "png";
-            var selectedPath = EditorUtility.SaveFilePanelInProject(
-                "Bake TextureRecipe",
-                recipe.name,
-                extension,
-                "Choose texture output path.");
-
-            if (string.IsNullOrEmpty(selectedPath))
-                return;
-
-            path.stringValue = selectedPath.Replace('\\', '/');
-            bakeStatus = null;
         }
 
         void DrawLayer(Rect rect, int index, bool active, bool focused)
@@ -183,23 +157,37 @@ namespace Unmanaged.LayeredTexture.Editor
             {
                 DrawLayerFrame(layerRect);
                 EditorGUI.LabelField(Inset(layerRect, LayerPadding, LayerPadding), "Missing Layer");
+                HandleMissingLayerContextMenu(layerRect, index);
                 return;
             }
 
             DrawLayerFrame(layerRect);
+            HandleLayerContextMenu(layerRect, index, (TextureLayerBase)layer.managedReferenceValue);
 
             var contentRect = Inset(layerRect, LayerPadding, LayerPadding);
             var textureLayer = (TextureLayerBase)layer.managedReferenceValue;
-            var headerPreviewRect = textureLayer.SupportsRawPreview
-                ? new Rect(contentRect.xMax - HeaderPreviewWidth, contentRect.y, HeaderPreviewWidth, HeaderHeight)
-                : default;
-            var headerRect = textureLayer.SupportsRawPreview
-                ? new Rect(contentRect.x, contentRect.y, headerPreviewRect.x - contentRect.x - SectionGap, HeaderHeight)
-                : new Rect(contentRect.x, contentRect.y, contentRect.width, HeaderHeight);
+            var removeRect = new Rect(
+                contentRect.xMax - RemoveButtonWidth,
+                contentRect.y + (HeaderHeight - LineHeight) * 0.5f,
+                RemoveButtonWidth,
+                LineHeight);
+            var headerRight = removeRect.x - SectionGap;
+            var headerPreviewRect = new Rect(
+                headerRight - HeaderPreviewWidth,
+                contentRect.y,
+                HeaderPreviewWidth,
+                HeaderHeight);
+            var showCollapsedPreview = !layer.isExpanded && textureLayer.SupportsRawPreview;
+            var headerRect = new Rect(
+                contentRect.x,
+                contentRect.y,
+                headerPreviewRect.x - contentRect.x - SectionGap,
+                HeaderHeight);
 
             DrawLayerHeaderRow(headerRect, layer);
+            DrawRemoveLayerButton(removeRect, index);
 
-            if (!layer.isExpanded && textureLayer.SupportsRawPreview)
+            if (showCollapsedPreview)
                 DrawLayerPreviewColumn(headerPreviewRect, index, textureLayer, true);
 
             if (!layer.isExpanded)
@@ -231,10 +219,10 @@ namespace Unmanaged.LayeredTexture.Editor
             var writeMask = layer.FindPropertyRelative("WriteMask");
             var opacity = layer.FindPropertyRelative("Opacity");
             var blendMode = layer.FindPropertyRelative("BlendMode");
-            var rowY = rect.y + 2f;
+            var rowY = rect.y + (HeaderHeight - LineHeight) * 0.5f;
             var enabledRect = new Rect(rect.x + 3f, rowY + 1f, 18f, LineHeight);
             var foldoutArrowRect = new Rect(enabledRect.xMax + 14f, rowY, 14f, LineHeight);
-            var roleRect = new Rect(foldoutArrowRect.xMax + 4f, rowY + 2f, 18f, LineHeight - 4f);
+            var roleRect = new Rect(foldoutArrowRect.xMax + 4f, rowY + 2f, 30f, LineHeight - 4f);
             var blendRect = new Rect(rect.xMax - 96f, rowY, 96f, LineHeight);
             var opacityRect = new Rect(blendRect.x - 116f, rowY, 112f, LineHeight);
             var channelRect = new Rect(opacityRect.x - 98f, rowY + 1f, 94f, LineHeight - 2f);
@@ -248,6 +236,7 @@ namespace Unmanaged.LayeredTexture.Editor
             layer.isExpanded = EditorGUI.Foldout(foldoutArrowRect, layer.isExpanded, GUIContent.none, true);
             DrawRoleBadge(roleRect, textureLayer.Role);
             EditorGUI.LabelField(titleRect, LayerName(layer), EditorStyles.boldLabel);
+            HandleFoldoutClick(new Rect(foldoutArrowRect.xMax, rowY, titleRect.xMax - foldoutArrowRect.xMax, LineHeight), layer);
             DrawWriteMaskButtons(channelRect, writeMask);
             opacity.floatValue = EditorGUI.Slider(opacityRect, GUIContent.none, opacity.floatValue, 0f, 1f);
             EditorGUI.PropertyField(blendRect, blendMode, GUIContent.none);
@@ -272,6 +261,9 @@ namespace Unmanaged.LayeredTexture.Editor
                 case NoiseLayer:
                     DrawNoiseFields(ref rect, layer);
                     break;
+                case WarpLayer:
+                    DrawWarpFields(ref rect, layer);
+                    break;
                 case WaterWavesLayer:
                     DrawWaterWavesFields(ref rect, layer);
                     break;
@@ -294,7 +286,6 @@ namespace Unmanaged.LayeredTexture.Editor
                     break;
             }
 
-            DrawMaskRow(NextLine(ref rect), layer.FindPropertyRelative("Mask"));
         }
 
         float GetLayerHeight(int index)
@@ -317,14 +308,14 @@ namespace Unmanaged.LayeredTexture.Editor
             {
                 SolidColorLayer => 1,
                 TextureFileLayer => 1,
-                NoiseLayer => 6,
+                NoiseLayer => 5,
+                WarpLayer => 2,
                 WaterWavesLayer => IsWaterWavesFoam(layer) ? 6 : 5,
                 NormalFromHeightLayer => 1,
                 RecipeReferenceLayer => 1,
                 _ => 2
             };
 
-            lines++;
             return lines * LineHeight + (lines - 1) * Spacing + SectionPadding * 2f;
         }
 
@@ -366,15 +357,40 @@ namespace Unmanaged.LayeredTexture.Editor
             GUI.backgroundColor = previousColor;
         }
 
+        static void HandleFoldoutClick(Rect rect, SerializedProperty layer)
+        {
+            var current = Event.current;
+
+            if (current.type != EventType.MouseDown || current.button != 0 || !rect.Contains(current.mousePosition))
+                return;
+
+            layer.isExpanded = !layer.isExpanded;
+            GUI.changed = true;
+            current.Use();
+        }
+
         static void DrawRoleBadge(Rect rect, TextureLayerRole role)
         {
-            var previousColor = GUI.backgroundColor;
-            GUI.backgroundColor = role == TextureLayerRole.Source
-                ? new Color(0.34f, 0.56f, 0.78f)
-                : new Color(0.74f, 0.48f, 0.26f);
+            var fill = role == TextureLayerRole.Source
+                ? new Color(0.16f, 0.32f, 0.48f, 0.9f)
+                : new Color(0.42f, 0.25f, 0.12f, 0.9f);
 
-            GUI.Box(rect, role == TextureLayerRole.Source ? "S" : "P", EditorStyles.miniButton);
-            GUI.backgroundColor = previousColor;
+            EditorGUI.DrawRect(rect, fill);
+            DrawBorder(rect, new Color(0f, 0f, 0f, 0.45f));
+
+            var style = EditorStyles.centeredGreyMiniLabel;
+            var previousColor = style.normal.textColor;
+            style.normal.textColor = new Color(0.86f, 0.9f, 0.94f);
+            GUI.Label(rect, role == TextureLayerRole.Source ? "SRC" : "FX", style);
+            style.normal.textColor = previousColor;
+        }
+
+        static void DrawBorder(Rect rect, Color color)
+        {
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, 1f), color);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), color);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, 1f, rect.height), color);
+            EditorGUI.DrawRect(new Rect(rect.xMax - 1f, rect.y, 1f, rect.height), color);
         }
 
         static void DrawLayerFrame(Rect rect)
@@ -390,18 +406,21 @@ namespace Unmanaged.LayeredTexture.Editor
         void ShowLayerMenu(Rect buttonRect, ReorderableList list)
         {
             var menu = new GenericMenu();
-            menu.AddItem(new GUIContent("Solid Color"), false, () => AddLayer(new SolidColorLayer()));
-            menu.AddItem(new GUIContent("Texture File"), false, () => AddLayer(new TextureFileLayer()));
-            menu.AddItem(new GUIContent("Noise"), false, () => AddLayer(new NoiseLayer()));
-            menu.AddItem(new GUIContent("Water Waves"), false, () => AddLayer(new WaterWavesLayer()));
-            menu.AddItem(new GUIContent("Normal From Height"), false, () => AddLayer(new NormalFromHeightLayer()));
-            menu.AddItem(new GUIContent("Recipe Reference"), false, () => AddLayer(new RecipeReferenceLayer()));
+            menu.AddItem(new GUIContent("SRC/Solid Color"), false, () => AddLayer(new SolidColorLayer()));
+            menu.AddItem(new GUIContent("SRC/Texture File"), false, () => AddLayer(new TextureFileLayer()));
+            menu.AddItem(new GUIContent("SRC/Noise"), false, () => AddLayer(new NoiseLayer()));
+            menu.AddItem(new GUIContent("SRC/Water Waves"), false, () => AddLayer(new WaterWavesLayer()));
+            menu.AddItem(new GUIContent("SRC/Recipe Reference"), false, () => AddLayer(new RecipeReferenceLayer()));
+            menu.AddSeparator("");
+            menu.AddItem(new GUIContent("FX/Warp"), false, () => AddLayer(new WarpLayer()));
+            menu.AddItem(new GUIContent("FX/Normal From Height"), false, () => AddLayer(new NormalFromHeightLayer()));
             menu.DropDown(buttonRect);
         }
 
         void AddLayer(TextureLayerBase layer)
         {
             serializedObject.Update();
+            Undo.RegisterCompleteObjectUndo(recipe, "Add Texture Layer");
 
             var index = layers.arraySize;
             layers.arraySize++;
@@ -415,11 +434,145 @@ namespace Unmanaged.LayeredTexture.Editor
 
         void RemoveLayer(ReorderableList list)
         {
-            if (list.index < 0 || list.index >= layers.arraySize)
+            RemoveLayerAt(list.index);
+        }
+
+        void RemovePendingLayer()
+        {
+            if (removeLayerIndex < 0)
                 return;
 
-            layers.DeleteArrayElementAtIndex(list.index);
-            list.index = Mathf.Min(list.index, layers.arraySize - 1);
+            RemoveLayerAt(removeLayerIndex);
+            removeLayerIndex = -1;
+        }
+
+        void RemoveLayerAt(int index)
+        {
+            if (index < 0 || index >= layers.arraySize)
+                return;
+
+            serializedObject.Update();
+            Undo.RegisterCompleteObjectUndo(recipe, "Remove Texture Layer");
+            layers.DeleteArrayElementAtIndex(index);
+            layerList.index = Mathf.Min(index, layers.arraySize - 1);
+            serializedObject.ApplyModifiedProperties();
+            MarkPreviewDirty();
+        }
+
+        void DrawRemoveLayerButton(Rect rect, int index)
+        {
+            if (!GUI.Button(rect, new GUIContent("x", "Remove layer"), EditorStyles.miniButton))
+                return;
+
+            removeLayerIndex = index;
+            GUI.changed = true;
+        }
+
+        void HandleLayerContextMenu(Rect rect, int index, TextureLayerBase layer)
+        {
+            var current = Event.current;
+
+            if (current.type != EventType.ContextClick || !rect.Contains(current.mousePosition))
+                return;
+
+            var menu = new GenericMenu();
+            menu.AddItem(new GUIContent("Copy Layer"), false, () => CopyLayer(layer));
+
+            if (TextureLayerClipboard.CanPasteValues(layer))
+                menu.AddItem(new GUIContent("Paste Values"), false, () => PasteLayerValues(index));
+            else
+                menu.AddDisabledItem(new GUIContent("Paste Values"));
+
+            if (TextureLayerClipboard.HasLayer)
+                menu.AddItem(new GUIContent("Paste As New"), false, () => PasteLayerAsNew(index));
+            else
+                menu.AddDisabledItem(new GUIContent("Paste As New"));
+
+            menu.AddItem(new GUIContent("Duplicate Layer"), false, () => DuplicateLayer(index));
+            menu.AddSeparator("");
+            menu.AddItem(new GUIContent("Remove Layer"), false, () => RemoveLayerAt(index));
+            menu.ShowAsContext();
+            current.Use();
+        }
+
+        void HandleMissingLayerContextMenu(Rect rect, int index)
+        {
+            var current = Event.current;
+
+            if (current.type != EventType.ContextClick || !rect.Contains(current.mousePosition))
+                return;
+
+            var menu = new GenericMenu();
+
+            if (TextureLayerClipboard.HasLayer)
+                menu.AddItem(new GUIContent("Paste As New"), false, () => PasteLayerAsNew(index));
+            else
+                menu.AddDisabledItem(new GUIContent("Paste As New"));
+
+            menu.AddItem(new GUIContent("Remove Layer"), false, () => RemoveLayerAt(index));
+            menu.ShowAsContext();
+            current.Use();
+        }
+
+        static void CopyLayer(TextureLayerBase layer) => TextureLayerClipboard.Copy(layer);
+
+        void PasteLayerValues(int index)
+        {
+            serializedObject.Update();
+
+            if (index < 0 || index >= layers.arraySize)
+                return;
+
+            var layer = layers.GetArrayElementAtIndex(index).managedReferenceValue as TextureLayerBase;
+
+            if (!TextureLayerClipboard.CanPasteValues(layer))
+                return;
+
+            Undo.RegisterCompleteObjectUndo(recipe, "Paste Texture Layer Values");
+            TextureLayerClipboard.TryPasteValues(layer);
+            EditorUtility.SetDirty(recipe);
+            serializedObject.Update();
+            MarkPreviewDirty();
+        }
+
+        void PasteLayerAsNew(int index)
+        {
+            if (!TextureLayerClipboard.TryCloneCopiedLayer(out var layer))
+                return;
+
+            InsertLayerAfter(index, layer, "Paste Texture Layer");
+        }
+
+        void DuplicateLayer(int index)
+        {
+            if (index < 0 || index >= layers.arraySize)
+                return;
+
+            var layer = layers.GetArrayElementAtIndex(index).managedReferenceValue as TextureLayerBase;
+
+            if (!TextureLayerClipboard.TryClone(layer, out var clone))
+                return;
+
+            InsertLayerAfter(index, clone, "Duplicate Texture Layer");
+        }
+
+        void InsertLayerAfter(int index, TextureLayerBase layer, string undoName)
+        {
+            serializedObject.Update();
+            Undo.RegisterCompleteObjectUndo(recipe, undoName);
+
+            var insertIndex = Mathf.Clamp(index + 1, 0, layers.arraySize);
+            if (insertIndex == layers.arraySize)
+                layers.arraySize++;
+            else
+                layers.InsertArrayElementAtIndex(insertIndex);
+
+            var property = layers.GetArrayElementAtIndex(insertIndex);
+            property.managedReferenceValue = layer;
+            property.isExpanded = true;
+            layerList.index = insertIndex;
+
+            serializedObject.ApplyModifiedProperties();
             MarkPreviewDirty();
         }
 
@@ -560,7 +713,9 @@ namespace Unmanaged.LayeredTexture.Editor
 
             if (TextureRecipeBaker.Bake(recipe, out var error))
             {
-                bakeStatus = $"Baked {output.FindPropertyRelative("OutputPath").stringValue}";
+                bakeStatus = TextureRecipeBaker.TryGetOutputPath(recipe, out var assetPath, out _, out _)
+                    ? $"Baked {assetPath}"
+                    : "Baked.";
                 bakeStatusType = MessageType.Info;
                 return;
             }
@@ -709,12 +864,6 @@ namespace Unmanaged.LayeredTexture.Editor
                     "Gain");
             }
 
-            var warpStrength = layer.FindPropertyRelative("WarpStrength");
-            DrawNoiseWarpRow(
-                NextLine(ref rect),
-                warpStrength,
-                layer.FindPropertyRelative("WarpScale"),
-                layer.FindPropertyRelative("WarpOctaves"));
             DrawNoiseRow(
                 NextLine(ref rect),
                 layer.FindPropertyRelative("Contrast"),
@@ -723,6 +872,19 @@ namespace Unmanaged.LayeredTexture.Editor
                 "Brightness",
                 layer.FindPropertyRelative("Invert"),
                 "Invert");
+        }
+
+        static void DrawWarpFields(ref Rect rect, SerializedProperty layer)
+        {
+            DrawNoiseRow(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("Strength"),
+                "Strength",
+                layer.FindPropertyRelative("Scale"),
+                "Scale",
+                layer.FindPropertyRelative("Seed"),
+                "Seed");
+            DrawLabeledField(NextLine(ref rect), layer.FindPropertyRelative("Octaves"), "Octaves");
         }
 
         static void DrawWaterWavesFields(ref Rect rect, SerializedProperty layer)
@@ -854,23 +1016,6 @@ namespace Unmanaged.LayeredTexture.Editor
             source.FindPropertyRelative("Kind").enumValueIndex = (int)TextureSourceKind.File;
             WriteAssetPath(source.FindPropertyRelative("Path"), assetPath);
             source.FindPropertyRelative("RuntimeTexture").objectReferenceValue = null;
-        }
-
-        static void DrawNoiseWarpRow(
-            Rect rect,
-            SerializedProperty strength,
-            SerializedProperty scale,
-            SerializedProperty octaves)
-        {
-            const float Gap = 8f;
-            var width = (rect.width - Gap * 2f) / 3f;
-            DrawLabeledField(new Rect(rect.x, rect.y, width, rect.height), strength, "Warp Strength");
-
-            using (new EditorGUI.DisabledScope(Mathf.Abs(strength.floatValue) <= 0.0001f))
-            {
-                DrawLabeledField(new Rect(rect.x + width + Gap, rect.y, width, rect.height), scale, "Warp Scale");
-                DrawLabeledField(new Rect(rect.x + (width + Gap) * 2f, rect.y, width, rect.height), octaves, "Warp Octaves");
-            }
         }
 
         static void DrawNoiseScaleRow(Rect rect, SerializedProperty scale, SerializedProperty rotation)
@@ -1016,6 +1161,7 @@ namespace Unmanaged.LayeredTexture.Editor
                 SolidColorLayer => "Solid Color",
                 TextureFileLayer => "Texture File",
                 NoiseLayer => "Noise",
+                WarpLayer => "Warp",
                 WaterWavesLayer => "Water Waves",
                 NormalFromHeightLayer => "Normal From Height",
                 RecipeReferenceLayer => "Recipe Reference",

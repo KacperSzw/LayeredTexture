@@ -8,6 +8,7 @@ namespace Unmanaged.LayeredTexture
         internal const string SolidColorKernel = "SolidColor";
         internal const string TextureFileKernel = "TextureFile";
         internal const string NoiseKernel = "Noise";
+        internal const string WarpKernel = "Warp";
         internal const string NormalFromHeightKernel = "NormalFromHeight";
         internal const string WaterWavesKernel = "WaterWaves";
 
@@ -21,8 +22,8 @@ namespace Unmanaged.LayeredTexture
         internal static readonly int NoiseTransformId = Shader.PropertyToID("_NoiseTransform");
         internal static readonly int NoiseRotationId = Shader.PropertyToID("_NoiseRotation");
         internal static readonly int NoiseFractalSettingsId = Shader.PropertyToID("_NoiseFractalSettings");
-        internal static readonly int NoiseWarpSettingsId = Shader.PropertyToID("_NoiseWarpSettings");
         internal static readonly int NoiseOutputSettingsId = Shader.PropertyToID("_NoiseOutputSettings");
+        internal static readonly int WarpSettingsId = Shader.PropertyToID("_WarpSettings");
         internal static readonly int HeightUsageId = Shader.PropertyToID("_HeightUsage");
         internal static readonly int NormalStrengthId = Shader.PropertyToID("_NormalStrength");
         internal static readonly int WaterWaveSettingsId = Shader.PropertyToID("_WaterWaveSettings");

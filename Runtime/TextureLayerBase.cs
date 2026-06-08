@@ -158,12 +158,13 @@ namespace Unmanaged.LayeredTexture
     /// </summary>
     public enum BlendMode
     {
-        Normal,
-        Replace,
-        Add,
-        Multiply,
-        Min,
-        Max
+        Normal = 0,
+        Replace = 1,
+        Add = 2,
+        Subtract = 6,
+        Multiply = 3,
+        Min = 4,
+        Max = 5
     }
 
     /// <summary>
