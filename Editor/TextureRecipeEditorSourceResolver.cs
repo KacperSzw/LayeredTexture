@@ -5,6 +5,9 @@ using UnityEngine;
 
 namespace Unmanaged.LayeredTexture.Editor
 {
+    /// <summary>
+    /// Editor resolver for TextureFileLayer sources backed by Unity assets or external image files.
+    /// </summary>
     sealed class TextureRecipeEditorSourceResolver : ITextureSourceResolver
     {
         internal static readonly TextureRecipeEditorSourceResolver Instance = new();
@@ -15,6 +18,13 @@ namespace Unmanaged.LayeredTexture.Editor
             AssemblyReloadEvents.beforeAssemblyReload += Instance.ClearExternalTextures;
         }
 
+        /// <summary>
+        /// Resolves a serialized file source to a Unity asset texture or cached external texture.
+        /// </summary>
+        /// <param name="_">Recipe being evaluated; unused by the editor resolver.</param>
+        /// <param name="source">Texture source to resolve.</param>
+        /// <param name="texture">Resolved texture when successful.</param>
+        /// <returns>True when the source resolves to a supported texture.</returns>
         public bool TryResolve(TextureRecipe _, TextureSource source, out Texture texture)
         {
             texture = null;
@@ -36,24 +46,30 @@ namespace Unmanaged.LayeredTexture.Editor
             return TryLoadExternalTexture(fullPath, out texture);
         }
 
+        /// <summary>
+        /// Converts an AssetPath to an Assets/... project path when it points inside the Unity Assets folder.
+        /// </summary>
+        /// <param name="path">Source path to convert.</param>
+        /// <param name="assetPath">Unity asset path when conversion succeeds.</param>
+        /// <returns>True when the source path resolves to a Unity asset path.</returns>
         internal static bool TryGetAssetPath(AssetPath path, out string assetPath)
         {
             assetPath = null;
+            string relativeRoot = null;
 
-            if (!TryGetAbsolutePath(path, out var fullPath))
+            if (path.Mode == AssetPathMode.Relative
+                && !LayeredTexturePreferences.TryGetRelativeRoot(out relativeRoot))
                 return false;
 
-            var assetsRoot = Path.GetFullPath(Application.dataPath);
-
-            if (!SamePath(fullPath, assetsRoot) && !IsInside(fullPath, assetsRoot))
-                return false;
-
-            assetPath = SamePath(fullPath, assetsRoot)
-                ? "Assets"
-                : "Assets/" + fullPath.Substring(RootPrefix(assetsRoot).Length).Replace('\\', '/');
-            return true;
+            return path.TryGetUnityAssetPath(relativeRoot, out assetPath);
         }
 
+        /// <summary>
+        /// Resolves an AssetPath using the configured editor relative root when needed.
+        /// </summary>
+        /// <param name="path">Source path to resolve.</param>
+        /// <param name="absolutePath">Absolute filesystem path when resolution succeeds.</param>
+        /// <returns>True when the path is valid for its mode.</returns>
         internal static bool TryGetAbsolutePath(AssetPath path, out string absolutePath)
         {
             absolutePath = null;
@@ -66,6 +82,13 @@ namespace Unmanaged.LayeredTexture.Editor
             return path.TryGetAbsolutePath(relativeRoot, out absolutePath);
         }
 
+        /// <summary>
+        /// Converts a Unity asset path into the selected TextureSource path mode.
+        /// </summary>
+        /// <param name="assetPath">Unity Assets/... path.</param>
+        /// <param name="mode">Serialized path mode to create.</param>
+        /// <param name="sourcePath">Texture source path when conversion succeeds.</param>
+        /// <returns>True when the asset path can be represented in the requested mode.</returns>
         internal static bool TryMakeSourcePath(
             string assetPath,
             AssetPathMode mode,
@@ -127,18 +150,6 @@ namespace Unmanaged.LayeredTexture.Editor
 
             externalTextures.Clear();
         }
-
-        static bool IsInside(string path, string root) =>
-            path.StartsWith(RootPrefix(root), System.StringComparison.OrdinalIgnoreCase);
-
-        static string RootPrefix(string root) =>
-            root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            + Path.DirectorySeparatorChar;
-
-        static bool SamePath(string a, string b) => string.Equals(
-            a.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-            b.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-            System.StringComparison.OrdinalIgnoreCase);
 
         struct CachedTexture
         {

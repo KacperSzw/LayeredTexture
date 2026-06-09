@@ -2,6 +2,9 @@ using UnityEngine;
 
 namespace Unmanaged.LayeredTexture
 {
+    /// <summary>
+    /// Resolves serialized texture sources into sampleable Unity texture objects.
+    /// </summary>
     static class TextureSourceUtility
     {
         internal static bool CanSample(TextureSource source, Vector2Int resolution)
@@ -12,6 +15,14 @@ namespace Unmanaged.LayeredTexture
             return CanSample(source.RuntimeTexture);
         }
 
+        /// <summary>
+        /// Resolves direct runtime references or delegates file-backed sources to a resolver.
+        /// </summary>
+        /// <param name="recipe">Recipe being evaluated, used by custom resolvers for context.</param>
+        /// <param name="source">Serialized texture source to resolve.</param>
+        /// <param name="resolver">Optional resolver for non-runtime texture source kinds.</param>
+        /// <param name="texture">Sampleable texture when resolution succeeds.</param>
+        /// <returns>True when the resolved texture can be sampled by layer kernels.</returns>
         internal static bool TryResolve(
             TextureRecipe recipe,
             TextureSource source,

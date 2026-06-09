@@ -34,9 +34,7 @@ namespace Unmanaged.LayeredTexture
         /// <inheritdoc />
         public override void Process(BakeContext ctx)
         {
-            if (!TryGetShaderKernel(out var shader, out var kernel, out var error))
-                throw new InvalidOperationException(error);
-
+            LayerCompute.GetKernelOrThrow(LayerCompute.WaterWavesKernel, out var shader, out var kernel);
             LayerCompute.SetCommon(shader, kernel, ctx, Opacity, BlendMode, InputSwizzle, WriteMask);
             shader.SetVector(LayerCompute.WaterWaveSettingsId, new Vector4(
                 Seed,
@@ -65,9 +63,6 @@ namespace Unmanaged.LayeredTexture
                 0f));
             LayerCompute.Dispatch(shader, kernel, ctx);
         }
-
-        internal static bool TryGetShaderKernel(out ComputeShader shader, out int kernel, out string error) =>
-            LayerCompute.TryGetKernel(LayerCompute.WaterWavesKernel, out shader, out kernel, out error);
     }
 
     public enum WaterWavesOutputMode

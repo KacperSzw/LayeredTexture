@@ -1,69 +1,28 @@
-using System;
-using System.IO;
 using UnityEngine;
 
 namespace Unmanaged.LayeredTexture.Editor
 {
+    /// <summary>
+    /// Shared editor bake helpers for render texture readback and cleanup.
+    /// </summary>
     static class LayeredTextureBakeUtility
     {
-        internal static bool TryGetOutputPath(
-            string outputPath,
-            string label,
-            string expectedExtension,
-            string extensionContext,
-            string unsupportedExtensionError,
-            out string assetPath,
-            out string fullPath,
-            out string error)
-        {
-            assetPath = null;
-            fullPath = null;
-            error = null;
-
-            if (string.IsNullOrWhiteSpace(outputPath))
-            {
-                error = $"{label} is missing.";
-                return false;
-            }
-
-            assetPath = outputPath.Replace('\\', '/');
-
-            if (Path.IsPathRooted(assetPath) || !assetPath.StartsWith("Assets/", StringComparison.Ordinal))
-            {
-                error = $"{label} must be under Assets/.";
-                return false;
-            }
-
-            if (expectedExtension == null)
-            {
-                error = unsupportedExtensionError;
-                return false;
-            }
-
-            if (!string.Equals(Path.GetExtension(assetPath), expectedExtension, StringComparison.OrdinalIgnoreCase))
-            {
-                error = string.IsNullOrEmpty(extensionContext)
-                    ? $"{label} extension must be {expectedExtension}."
-                    : $"{label} extension must be {expectedExtension} for {extensionContext}.";
-                return false;
-            }
-
-            var projectRoot = Directory.GetParent(Application.dataPath).FullName;
-            var assetsRoot = Path.GetFullPath(Application.dataPath);
-            fullPath = Path.GetFullPath(Path.Combine(projectRoot, assetPath));
-
-            if (!fullPath.StartsWith(assetsRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-            {
-                error = $"{label} must be under Assets/.";
-                return false;
-            }
-
-            return true;
-        }
-
+        /// <summary>
+        /// Copies a render texture into a readable Texture2D without mipmaps.
+        /// </summary>
+        /// <param name="renderTexture">Render texture to read from.</param>
+        /// <param name="format">Texture2D format used for readback.</param>
+        /// <returns>Readable texture owned by the caller.</returns>
         internal static Texture2D ReadBack(RenderTexture renderTexture, TextureFormat format) =>
             ReadBack(renderTexture, format, false);
 
+        /// <summary>
+        /// Copies a render texture into a readable Texture2D.
+        /// </summary>
+        /// <param name="renderTexture">Render texture to read from.</param>
+        /// <param name="format">Texture2D format used for readback.</param>
+        /// <param name="mipChain">Whether the created texture includes and updates mipmaps.</param>
+        /// <returns>Readable texture owned by the caller.</returns>
         internal static Texture2D ReadBack(RenderTexture renderTexture, TextureFormat format, bool mipChain)
         {
             var texture = new Texture2D(renderTexture.width, renderTexture.height, format, mipChain, true);

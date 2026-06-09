@@ -3,6 +3,9 @@ using UnityEngine;
 
 namespace Unmanaged.LayeredTexture.Editor
 {
+    /// <summary>
+    /// Assigns custom icons to LayeredTexture ScriptableObject scripts in the editor.
+    /// </summary>
     [InitializeOnLoad]
     static class LayeredTextureIconInstaller
     {

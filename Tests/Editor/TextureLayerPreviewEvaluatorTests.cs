@@ -2,8 +2,8 @@ using NUnit.Framework;
 using Unmanaged.LayeredTexture;
 using Unmanaged.LayeredTexture.Editor;
 using UnityEngine;
-using UnityEngine.Experimental.Rendering;
 using UnityEngine.TestTools;
+using static LayeredTextureTestUtility;
 
 public sealed class TextureLayerPreviewEvaluatorTests
 {
@@ -211,24 +211,6 @@ public sealed class TextureLayerPreviewEvaluatorTests
         return recipe;
     }
 
-    static Texture2D CreateTexture(Color color)
-    {
-        var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false, true);
-
-        for (var y = 0; y < texture.height; y++)
-        for (var x = 0; x < texture.width; x++)
-            texture.SetPixel(x, y, color);
-
-        texture.Apply();
-        return texture;
-    }
-
-    static TextureSource RuntimeSource(Texture texture) => new()
-    {
-        Kind = TextureSourceKind.RuntimeTextureReference,
-        RuntimeTexture = texture
-    };
-
     static void AssertTexturePixels(RenderTexture renderTexture, Color expected)
     {
         foreach (var pixel in ReadPixels(renderTexture))
@@ -257,54 +239,5 @@ public sealed class TextureLayerPreviewEvaluatorTests
         }
 
         Assert.Fail("Expected non-flat preview output.");
-    }
-
-    static Color[] ReadPixels(RenderTexture renderTexture)
-    {
-        var active = RenderTexture.active;
-        var texture = new Texture2D(renderTexture.width, renderTexture.height, TextureFormat.RGBA32, false, true);
-
-        try
-        {
-            RenderTexture.active = renderTexture;
-            texture.ReadPixels(new Rect(0, 0, renderTexture.width, renderTexture.height), 0, 0);
-            texture.Apply();
-            return texture.GetPixels();
-        }
-        finally
-        {
-            Object.DestroyImmediate(texture);
-            RenderTexture.active = active;
-        }
-    }
-
-    static void AssertColor(Color actual, Color expected)
-    {
-        const float Tolerance = 0.02f;
-
-        Assert.That(actual.r, Is.EqualTo(expected.r).Within(Tolerance), "Red");
-        Assert.That(actual.g, Is.EqualTo(expected.g).Within(Tolerance), "Green");
-        Assert.That(actual.b, Is.EqualTo(expected.b).Within(Tolerance), "Blue");
-        Assert.That(actual.a, Is.EqualTo(expected.a).Within(Tolerance), "Alpha");
-    }
-
-    static void Release(RenderTexture texture)
-    {
-        texture.Release();
-        Object.DestroyImmediate(texture);
-    }
-
-    static void IgnoreUnsupportedCompute()
-    {
-        if (!SystemInfo.supportsComputeShaders)
-            Assert.Ignore("Compute shaders are not supported in this editor environment.");
-
-        var format = GraphicsFormat.R16G16B16A16_UNorm;
-
-        if (!SystemInfo.IsFormatSupported(format, GraphicsFormatUsage.Render))
-            Assert.Ignore("Default LayeredTexture working format is not renderable in this editor environment.");
-
-        if (!SystemInfo.IsFormatSupported(format, GraphicsFormatUsage.LoadStore))
-            Assert.Ignore("Default LayeredTexture working format does not support compute writes in this editor environment.");
     }
 }

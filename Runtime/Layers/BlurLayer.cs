@@ -20,10 +20,8 @@ namespace Unmanaged.LayeredTexture
         /// <inheritdoc />
         public override void Process(BakeContext ctx)
         {
-            if (!TryGetHorizontalShaderKernel(out var shader, out var horizontal, out var error)
-                || !TryGetVerticalShaderKernel(out _, out var vertical, out error))
-                throw new InvalidOperationException(error);
-
+            LayerCompute.GetKernelOrThrow(LayerCompute.BlurHorizontalKernel, out var shader, out var horizontal);
+            LayerCompute.GetKernelOrThrow(LayerCompute.BlurVerticalKernel, out _, out var vertical);
             var scratch = ctx.GetScratch();
             BuildGaussianPairs(Radius, RadiusMode, ctx.resolution.x, out var centerWeight, out var pairCount);
             LayerCompute.SetCommon(shader, horizontal, ctx, 1f, BlendMode.Replace, ChannelSwizzle.Identity, ChannelWriteMask.RGBA);
@@ -91,12 +89,6 @@ namespace Unmanaged.LayeredTexture
             shader.SetInt(LayerCompute.BlurPairCountId, pairCount);
             shader.SetVectorArray(LayerCompute.BlurPairsId, Pairs);
         }
-
-        internal static bool TryGetHorizontalShaderKernel(out ComputeShader shader, out int kernel, out string error) =>
-            LayerCompute.TryGetKernel(LayerCompute.BlurHorizontalKernel, out shader, out kernel, out error);
-
-        internal static bool TryGetVerticalShaderKernel(out ComputeShader shader, out int kernel, out string error) =>
-            LayerCompute.TryGetKernel(LayerCompute.BlurVerticalKernel, out shader, out kernel, out error);
     }
 
     public enum BlurRadiusMode

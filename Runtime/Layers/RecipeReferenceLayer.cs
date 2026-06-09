@@ -25,9 +25,7 @@ namespace Unmanaged.LayeredTexture
             if (Recipe == null)
                 return;
 
-            if (!TextureFileLayer.TryGetShaderKernel(out var shader, out var kernel, out var error))
-                throw new InvalidOperationException(error);
-
+            LayerCompute.GetKernelOrThrow(LayerCompute.TextureFileKernel, out var shader, out var kernel);
             var texture = TextureRecipeEvaluator.Evaluate(Recipe, ctx.sourceResolver);
 
             if (texture == null)

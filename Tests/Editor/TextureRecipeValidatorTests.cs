@@ -4,6 +4,7 @@ using Unmanaged.LayeredTexture;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.TestTools;
+using static LayeredTextureTestUtility;
 
 public sealed class TextureRecipeValidatorTests
 {
@@ -404,21 +405,4 @@ public sealed class TextureRecipeValidatorTests
         return recipe;
     }
 
-    static TextureSource RuntimeSource(Texture texture) => new()
-    {
-        Kind = TextureSourceKind.RuntimeTextureReference,
-        RuntimeTexture = texture
-    };
-
-    static void IgnoreUnsupportedCompute()
-    {
-        if (!SystemInfo.supportsComputeShaders)
-            Assert.Ignore("Compute shaders are not supported in this editor environment.");
-
-        if (!SystemInfo.IsFormatSupported(GraphicsFormat.R16G16B16A16_UNorm, GraphicsFormatUsage.Render))
-            Assert.Ignore("Default LayeredTexture working format is not renderable in this editor environment.");
-
-        if (!SystemInfo.IsFormatSupported(GraphicsFormat.R16G16B16A16_UNorm, GraphicsFormatUsage.LoadStore))
-            Assert.Ignore("Default LayeredTexture working format does not support compute writes in this editor environment.");
-    }
 }

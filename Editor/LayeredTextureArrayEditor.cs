@@ -4,6 +4,9 @@ using UnityEngine;
 
 namespace Unmanaged.LayeredTexture.Editor
 {
+    /// <summary>
+    /// Inspector for LayeredTextureArray assets and their bake controls.
+    /// </summary>
     [CustomEditor(typeof(LayeredTextureArray))]
     sealed class LayeredTextureArrayEditor : UnityEditor.Editor
     {

@@ -4,6 +4,9 @@ using UnityEngine;
 
 namespace Unmanaged.LayeredTexture.Editor
 {
+    /// <summary>
+    /// Loads editor-only texture files used by file-backed texture sources.
+    /// </summary>
     static class TextureFileLoader
     {
         internal static bool IsSupportedPath(string path)
@@ -15,6 +18,12 @@ namespace Unmanaged.LayeredTexture.Editor
                 || string.Equals(extension, ".tga", StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// Loads a supported image file as a hidden, non-saved Texture2D owned by the caller.
+        /// </summary>
+        /// <param name="fullPath">Absolute filesystem path to the image file.</param>
+        /// <param name="texture">Loaded texture when successful.</param>
+        /// <returns>True when the file exists, is supported, and decodes successfully.</returns>
         internal static bool TryLoad(string fullPath, out Texture2D texture)
         {
             texture = null;

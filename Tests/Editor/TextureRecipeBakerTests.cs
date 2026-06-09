@@ -4,7 +4,7 @@ using Unmanaged.LayeredTexture;
 using Unmanaged.LayeredTexture.Editor;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.Experimental.Rendering;
+using static LayeredTextureTestUtility;
 
 public sealed class TextureRecipeBakerTests
 {
@@ -364,22 +364,6 @@ public sealed class TextureRecipeBakerTests
         Path = AssetPath.Relative(relativePath)
     };
 
-    static void CreateTextureAsset(string assetPath, Color color)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(FullPath(assetPath)));
-        AssetDatabase.Refresh();
-
-        var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false, true);
-
-        for (var y = 0; y < texture.height; y++)
-        for (var x = 0; x < texture.width; x++)
-            texture.SetPixel(x, y, color);
-
-        texture.Apply();
-        AssetDatabase.CreateAsset(texture, assetPath);
-        AssetDatabase.SaveAssets();
-    }
-
     static void WriteTexturePng(string fullPath, Color color)
     {
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(fullPath));
@@ -442,16 +426,6 @@ public sealed class TextureRecipeBakerTests
         }
     }
 
-    static void AssertColor(Color actual, Color expected, string message)
-    {
-        const float Tolerance = 0.02f;
-
-        Assert.That(actual.r, Is.EqualTo(expected.r).Within(Tolerance), $"{message} red");
-        Assert.That(actual.g, Is.EqualTo(expected.g).Within(Tolerance), $"{message} green");
-        Assert.That(actual.b, Is.EqualTo(expected.b).Within(Tolerance), $"{message} blue");
-        Assert.That(actual.a, Is.EqualTo(expected.a).Within(Tolerance), $"{message} alpha");
-    }
-
     static void DeleteTestFolder()
     {
         AssetDatabase.DeleteAsset(TestFolder);
@@ -471,23 +445,5 @@ public sealed class TextureRecipeBakerTests
     {
         if (Directory.Exists(externalTestFolder))
             Directory.Delete(externalTestFolder, true);
-    }
-
-    static string FullPath(string assetPath)
-    {
-        var projectRoot = Directory.GetParent(Application.dataPath).FullName;
-        return Path.GetFullPath(Path.Combine(projectRoot, assetPath));
-    }
-
-    static void IgnoreUnsupportedCompute()
-    {
-        if (!SystemInfo.supportsComputeShaders)
-            Assert.Ignore("Compute shaders are not supported in this editor environment.");
-
-        if (!SystemInfo.IsFormatSupported(GraphicsFormat.R16G16B16A16_UNorm, GraphicsFormatUsage.Render))
-            Assert.Ignore("Default LayeredTexture working format is not renderable in this editor environment.");
-
-        if (!SystemInfo.IsFormatSupported(GraphicsFormat.R16G16B16A16_UNorm, GraphicsFormatUsage.LoadStore))
-            Assert.Ignore("Default LayeredTexture working format does not support compute writes in this editor environment.");
     }
 }

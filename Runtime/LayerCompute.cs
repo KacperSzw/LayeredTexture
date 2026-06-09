@@ -3,6 +3,9 @@ using UnityEngine;
 
 namespace Unmanaged.LayeredTexture
 {
+    /// <summary>
+    /// Shared compute shader access and parameter binding for all layer kernels.
+    /// </summary>
     static class LayerCompute
     {
         internal const string SolidColorKernel = "SolidColor";
@@ -54,6 +57,14 @@ namespace Unmanaged.LayeredTexture
         static readonly int MaskOpacityId = Shader.PropertyToID("_MaskOpacity");
         static readonly int RawPreviewId = Shader.PropertyToID("_RawPreview");
 
+        /// <summary>
+        /// Resolves a compute kernel and returns a validation-style error instead of throwing.
+        /// </summary>
+        /// <param name="kernelName">Kernel name inside the shared LayeredTexture compute shader.</param>
+        /// <param name="shader">Loaded compute shader when available.</param>
+        /// <param name="kernel">Resolved kernel index when available.</param>
+        /// <param name="error">Failure reason when resolution fails.</param>
+        /// <returns>True when the shader and kernel are available.</returns>
         internal static bool TryGetKernel(string kernelName, out ComputeShader shader, out int kernel, out string error)
         {
             shader = LayerCompute.shader != null
@@ -82,6 +93,28 @@ namespace Unmanaged.LayeredTexture
             return true;
         }
 
+        /// <summary>
+        /// Resolves a compute kernel for layer execution.
+        /// </summary>
+        /// <param name="kernelName">Kernel name inside the shared LayeredTexture compute shader.</param>
+        /// <param name="shader">Loaded compute shader.</param>
+        /// <param name="kernel">Resolved kernel index.</param>
+        internal static void GetKernelOrThrow(string kernelName, out ComputeShader shader, out int kernel)
+        {
+            if (!TryGetKernel(kernelName, out shader, out kernel, out var error))
+                throw new InvalidOperationException(error);
+        }
+
+        /// <summary>
+        /// Binds compositing, mask, swizzle, and output state shared by layer kernels.
+        /// </summary>
+        /// <param name="shader">Compute shader that owns the kernel.</param>
+        /// <param name="kernel">Kernel receiving common LayeredTexture parameters.</param>
+        /// <param name="ctx">Bake context that owns working textures and mask state.</param>
+        /// <param name="opacity">Layer opacity applied during common compositing.</param>
+        /// <param name="blendMode">Blend mode applied during common compositing.</param>
+        /// <param name="inputSwizzle">Input channel swizzle applied to candidate pixels.</param>
+        /// <param name="writeMask">Target channel mask applied to the final result.</param>
         internal static void SetCommon(
             ComputeShader shader,
             int kernel,

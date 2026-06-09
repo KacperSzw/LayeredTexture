@@ -3,6 +3,9 @@ using UnityEngine;
 
 namespace Unmanaged.LayeredTexture.Editor
 {
+    /// <summary>
+    /// Draws RGB, alpha, and individual-channel texture previews in editor UI.
+    /// </summary>
     static class TexturePreviewGUI
     {
         const float Padding = 5f;

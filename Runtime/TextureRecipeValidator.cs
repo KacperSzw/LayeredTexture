@@ -168,22 +168,22 @@ namespace Unmanaged.LayeredTexture
             switch (layer)
             {
                 case SolidColorLayer:
-                    return SolidColorLayer.TryGetShaderKernel(out _, out _, out error);
+                    return LayerCompute.TryGetKernel(LayerCompute.SolidColorKernel, out _, out _, out error);
                 case TextureFileLayer:
-                    return TextureFileLayer.TryGetShaderKernel(out _, out _, out error);
+                    return LayerCompute.TryGetKernel(LayerCompute.TextureFileKernel, out _, out _, out error);
                 case NoiseLayer:
-                    return NoiseLayer.TryGetShaderKernel(out _, out _, out error);
+                    return LayerCompute.TryGetKernel(LayerCompute.NoiseKernel, out _, out _, out error);
                 case WarpLayer:
-                    return WarpLayer.TryGetShaderKernel(out _, out _, out error);
+                    return LayerCompute.TryGetKernel(LayerCompute.WarpKernel, out _, out _, out error);
                 case NormalFromHeightLayer:
-                    return NormalFromHeightLayer.TryGetShaderKernel(out _, out _, out error);
+                    return LayerCompute.TryGetKernel(LayerCompute.NormalFromHeightKernel, out _, out _, out error);
                 case WaterWavesLayer:
-                    return WaterWavesLayer.TryGetShaderKernel(out _, out _, out error);
+                    return LayerCompute.TryGetKernel(LayerCompute.WaterWavesKernel, out _, out _, out error);
                 case BlurLayer:
-                    return BlurLayer.TryGetHorizontalShaderKernel(out _, out _, out error)
-                        && BlurLayer.TryGetVerticalShaderKernel(out _, out _, out error);
+                    return LayerCompute.TryGetKernel(LayerCompute.BlurHorizontalKernel, out _, out _, out error)
+                        && LayerCompute.TryGetKernel(LayerCompute.BlurVerticalKernel, out _, out _, out error);
                 case TransformLayer:
-                    return TransformLayer.TryGetShaderKernel(out _, out _, out error);
+                    return LayerCompute.TryGetKernel(LayerCompute.TransformKernel, out _, out _, out error);
                 case RecipeReferenceLayer recipeReferenceLayer:
                     return ValidateRecipeReferenceLayer(recipeReferenceLayer, visiting, out error);
                 default:
@@ -202,7 +202,7 @@ namespace Unmanaged.LayeredTexture
                 return true;
             }
 
-            if (!TextureFileLayer.TryGetShaderKernel(out _, out _, out error))
+            if (!LayerCompute.TryGetKernel(LayerCompute.TextureFileKernel, out _, out _, out error))
                 return false;
 
             return ValidateRecipe(layer.Recipe, layer.Recipe.Output, visiting, out error);

@@ -788,9 +788,11 @@ namespace Unmanaged.LayeredTexture.Editor
                 NextLine(ref rect),
                 layer.FindPropertyRelative("Scale"),
                 layer.FindPropertyRelative("Rotation"));
-            DrawNoiseOffsetRow(
+            DrawVector2Row(
                 NextLine(ref rect),
-                layer.FindPropertyRelative("Offset"));
+                layer.FindPropertyRelative("Offset"),
+                "Offset X",
+                "Offset Y");
 
             var fractal = layer.FindPropertyRelative("Fractal");
 
@@ -916,23 +918,6 @@ namespace Unmanaged.LayeredTexture.Editor
                 scale.vector2Value = value;
 
             DrawLabeledField(new Rect(rect.x + (width + Gap) * 2f, rect.y, width, rect.height), rotation, "Rotation");
-        }
-
-        static void DrawNoiseOffsetRow(Rect rect, SerializedProperty offset)
-        {
-            const float Gap = 8f;
-            var width = (rect.width - Gap) * 0.5f;
-            var value = offset.vector2Value;
-
-            EditorGUI.BeginChangeCheck();
-            value.x = DrawFloatField(new Rect(rect.x, rect.y, width, rect.height), "Offset X", value.x);
-            value.y = DrawFloatField(
-                new Rect(rect.x + width + Gap, rect.y, width, rect.height),
-                "Offset Y",
-                value.y);
-
-            if (EditorGUI.EndChangeCheck())
-                offset.vector2Value = value;
         }
 
         static void DrawVector2Row(Rect rect, SerializedProperty property, string xLabel, string yLabel)

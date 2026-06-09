@@ -6,6 +6,9 @@ using UnityEngine;
 
 namespace Unmanaged.LayeredTexture.Editor
 {
+    /// <summary>
+    /// Picker window for assigning texture files relative to the configured LayeredTexture root.
+    /// </summary>
     public sealed class RelativeTexturePickerWindow : EditorWindow
     {
         readonly Dictionary<string, Texture2D> previews = new();
@@ -25,6 +28,12 @@ namespace Unmanaged.LayeredTexture.Editor
             window.ShowUtility();
         }
 
+        /// <summary>
+        /// Collects supported texture files below a root folder as sorted relative paths.
+        /// </summary>
+        /// <param name="root">Absolute root folder to search.</param>
+        /// <param name="search">Optional case-insensitive path filter.</param>
+        /// <returns>Sorted relative paths using forward slashes.</returns>
         public static List<string> CollectRelativePaths(string root, string search)
         {
             var result = new List<string>();

@@ -17,9 +17,7 @@ namespace Unmanaged.LayeredTexture
         /// <inheritdoc />
         public override void Process(BakeContext ctx)
         {
-            if (!TryGetShaderKernel(out var shader, out var kernel, out var error))
-                throw new InvalidOperationException(error);
-
+            LayerCompute.GetKernelOrThrow(LayerCompute.WarpKernel, out var shader, out var kernel);
             LayerCompute.SetCommon(shader, kernel, ctx, Opacity, BlendMode, InputSwizzle, WriteMask);
             shader.SetVector(LayerCompute.WarpSettingsId, new Vector4(
                 Strength,
@@ -28,8 +26,5 @@ namespace Unmanaged.LayeredTexture
                 Seed));
             LayerCompute.Dispatch(shader, kernel, ctx);
         }
-
-        internal static bool TryGetShaderKernel(out ComputeShader shader, out int kernel, out string error) =>
-            LayerCompute.TryGetKernel(LayerCompute.WarpKernel, out shader, out kernel, out error);
     }
 }

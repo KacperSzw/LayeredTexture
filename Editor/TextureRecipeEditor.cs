@@ -3,6 +3,9 @@ using UnityEngine;
 
 namespace Unmanaged.LayeredTexture.Editor
 {
+    /// <summary>
+    /// Shared TextureRecipe editor view used by the inspector and standalone editor window.
+    /// </summary>
     sealed class TextureRecipeEditorView : System.IDisposable
     {
         readonly TextureRecipe recipe;
@@ -296,6 +299,9 @@ namespace Unmanaged.LayeredTexture.Editor
         }
     }
 
+    /// <summary>
+    /// Inspector for TextureRecipe assets.
+    /// </summary>
     [CustomEditor(typeof(TextureRecipe))]
     sealed class TextureRecipeEditor : UnityEditor.Editor
     {
@@ -326,6 +332,9 @@ namespace Unmanaged.LayeredTexture.Editor
         }
     }
 
+    /// <summary>
+    /// Standalone editor window for editing TextureRecipe assets.
+    /// </summary>
     sealed class TextureRecipeEditorWindow : EditorWindow
     {
         [SerializeField] TextureRecipe recipe;
