@@ -1,21 +1,7 @@
 # LayeredTexture
 
-LayeredTexture is a Unity package for authoring and baking layered texture recipes.
+LayeredTexture is a Unity package for building texture assets from serializable layer recipes. Version `0.1.0` focuses on compute-based evaluation, editor baking, packed material maps, masks, procedural sources, and texture arrays.
 
-The first public release is not ready yet. This repository currently contains the package scaffold.
+## License
 
-## Installation
-
-Add the package from Git in your Unity project manifest:
-
-```json
-{
-  "dependencies": {
-    "com.unmanaged.layered-texture": "https://github.com/KacperSzw/LayeredTexture.git"
-  }
-}
-```
-
-## Unity Version
-
-The development project targets Unity `6000.3.15f1`. The package manifest currently requires Unity `6000.3` or newer.
+MIT

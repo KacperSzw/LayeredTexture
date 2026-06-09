@@ -9,9 +9,24 @@ namespace Unmanaged.LayeredTexture
     [Serializable]
     public sealed class TransformLayer : TextureLayerBase
     {
+        /// <summary>
+        /// UV offset applied before sampling the current stack result.
+        /// </summary>
         public Vector2 Offset;
+
+        /// <summary>
+        /// UV scale applied around Pivot.
+        /// </summary>
         public Vector2 Scale = Vector2.one;
+
+        /// <summary>
+        /// Rotation around Pivot in degrees.
+        /// </summary>
         public float Rotation;
+
+        /// <summary>
+        /// Normalized UV pivot used for scale and rotation.
+        /// </summary>
         public Vector2 Pivot = new(0.5f, 0.5f);
 
         /// <inheritdoc />

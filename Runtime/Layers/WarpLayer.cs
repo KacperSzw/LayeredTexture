@@ -9,9 +9,24 @@ namespace Unmanaged.LayeredTexture
     [Serializable]
     public sealed class WarpLayer : TextureLayerBase
     {
+        /// <summary>
+        /// Deterministic random seed for the warp field.
+        /// </summary>
         public int Seed = 1;
+
+        /// <summary>
+        /// UV displacement amount applied to the current stack result.
+        /// </summary>
         public float Strength = 0.05f;
+
+        /// <summary>
+        /// Tile period count for the procedural warp field.
+        /// </summary>
         public float Scale = 4f;
+
+        /// <summary>
+        /// Number of noise octaves used by the warp field.
+        /// </summary>
         public int Octaves = 2;
 
         /// <inheritdoc />

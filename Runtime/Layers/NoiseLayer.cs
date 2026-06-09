@@ -9,17 +9,64 @@ namespace Unmanaged.LayeredTexture
     [Serializable]
     public sealed class NoiseLayer : TextureLayerBase
     {
+        /// <summary>
+        /// Procedural noise algorithm used to generate the base signal.
+        /// </summary>
         public NoiseType NoiseType = NoiseType.Gradient;
+
+        /// <summary>
+        /// Fractal layering mode applied over the base noise.
+        /// </summary>
         public NoiseFractal Fractal = NoiseFractal.FBM;
+
+        /// <summary>
+        /// Deterministic random seed for procedural variation.
+        /// </summary>
         public int Seed = 1;
+
+        /// <summary>
+        /// Tile period count on the X and Y axes.
+        /// </summary>
         public Vector2 Scale = new(8f, 8f);
+
+        /// <summary>
+        /// Noise-space offset applied after UV scaling.
+        /// </summary>
         public Vector2 Offset;
+
+        /// <summary>
+        /// Gradient direction rotation in degrees.
+        /// </summary>
         public float Rotation;
+
+        /// <summary>
+        /// Number of fractal octaves when a fractal mode is active.
+        /// </summary>
         public int Octaves = 4;
+
+        /// <summary>
+        /// Frequency multiplier between fractal octaves.
+        /// </summary>
         public float Lacunarity = 2f;
+
+        /// <summary>
+        /// Amplitude multiplier between fractal octaves.
+        /// </summary>
         public float Gain = 0.5f;
+
+        /// <summary>
+        /// Whether to invert the generated grayscale output.
+        /// </summary>
         public bool Invert;
+
+        /// <summary>
+        /// Contrast applied around the 0.5 midpoint.
+        /// </summary>
         public float Contrast = 1f;
+
+        /// <summary>
+        /// Additive brightness offset after contrast.
+        /// </summary>
         public float Brightness;
 
         /// <inheritdoc />
@@ -58,6 +105,9 @@ namespace Unmanaged.LayeredTexture
         }
     }
 
+    /// <summary>
+    /// Procedural noise algorithm used by NoiseLayer.
+    /// </summary>
     public enum NoiseType
     {
         Value,
@@ -68,6 +118,9 @@ namespace Unmanaged.LayeredTexture
         WorleyEdge
     }
 
+    /// <summary>
+    /// Fractal layering mode used by NoiseLayer.
+    /// </summary>
     public enum NoiseFractal
     {
         None,

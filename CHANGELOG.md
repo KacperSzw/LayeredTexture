@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
-- Initial package scaffold.
-- Add core recipe model, stub bake context, runtime validation, and edit-mode validator tests.
-- Add minimal runtime GPU evaluation for SolidColor layers.
+- Add TextureRecipe assets with compute-based runtime evaluation and editor baking.
+- Add LayeredTextureArray assets for Texture2DArray baking from recipe pages.
+- Add source, processor, mask, swizzle, blend, and channel-write layer controls.
+- Add editor inspectors, raw/channel previews, relative texture picker, and layer clipboard.
+- Add runtime validation, editor bake validation, and edit-mode test coverage.

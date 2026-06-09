@@ -9,7 +9,14 @@ namespace Unmanaged.LayeredTexture
     [Serializable]
     public sealed class NormalFromHeightLayer : TextureLayerBase
     {
+        /// <summary>
+        /// Channel sampled from the current stack result as height.
+        /// </summary>
         public MaskUsage HeightUsage = MaskUsage.R;
+
+        /// <summary>
+        /// Height-to-normal slope multiplier.
+        /// </summary>
         public float Strength = 1f;
 
         public NormalFromHeightLayer()

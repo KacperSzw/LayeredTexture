@@ -21,7 +21,7 @@ namespace Unmanaged.LayeredTexture.Editor
         /// <summary>
         /// Resolves a serialized file source to a Unity asset texture or cached external texture.
         /// </summary>
-        /// <param name="_">Recipe being evaluated; unused by the editor resolver.</param>
+        /// <param name="_">Owning recipe supplied by the resolver contract.</param>
         /// <param name="source">Texture source to resolve.</param>
         /// <param name="texture">Resolved texture when successful.</param>
         /// <returns>True when the source resolves to a supported texture.</returns>

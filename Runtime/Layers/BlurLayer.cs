@@ -9,7 +9,14 @@ namespace Unmanaged.LayeredTexture
     [Serializable]
     public sealed class BlurLayer : TextureLayerBase
     {
+        /// <summary>
+        /// Unit used when interpreting Radius.
+        /// </summary>
         public BlurRadiusMode RadiusMode = BlurRadiusMode.UV;
+
+        /// <summary>
+        /// Blur radius in normalized UV units or pixels, depending on RadiusMode.
+        /// </summary>
         public float Radius = 0.02f;
 
         const int MaxRadius = 128;
@@ -91,6 +98,9 @@ namespace Unmanaged.LayeredTexture
         }
     }
 
+    /// <summary>
+    /// Units used by BlurLayer.Radius.
+    /// </summary>
     public enum BlurRadiusMode
     {
         UV,
