@@ -174,4 +174,21 @@ namespace Unmanaged.LayeredTexture
         Relative,
         Absolute
     }
+
+    public sealed class AssetPathPickerAttribute : PropertyAttribute
+    {
+        public AssetPathPickerAttribute(AssetPathPickerKind kind)
+        {
+            Kind = kind;
+        }
+
+        public AssetPathPickerKind Kind { get; }
+    }
+
+    public enum AssetPathPickerKind
+    {
+        File,
+        Folder,
+        TextureFile
+    }
 }

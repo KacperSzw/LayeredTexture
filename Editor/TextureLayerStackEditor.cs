@@ -371,6 +371,9 @@ namespace Unmanaged.LayeredTexture.Editor
                         layer.FindPropertyRelative("Strength"),
                         "Strength");
                     break;
+                case InvertLayer:
+                    EditorGUI.LabelField(NextLine(ref rect), "Inverts selected write channels.");
+                    break;
                 case RecipeReferenceLayer:
                     EditorGUI.PropertyField(NextLine(ref rect), layer.FindPropertyRelative("Recipe"));
                     break;
@@ -409,6 +412,7 @@ namespace Unmanaged.LayeredTexture.Editor
                 TransformLayer => 3,
                 WaterWavesLayer => IsWaterWavesFoam(layer) ? 6 : 5,
                 NormalFromHeightLayer => 1,
+                InvertLayer => 1,
                 RecipeReferenceLayer => 1,
                 _ => 2
             };
@@ -513,6 +517,7 @@ namespace Unmanaged.LayeredTexture.Editor
             menu.AddItem(new GUIContent("FX/Transform"), false, () => AddLayer(new TransformLayer()));
             menu.AddItem(new GUIContent("FX/Warp"), false, () => AddLayer(new WarpLayer()));
             menu.AddItem(new GUIContent("FX/Normal From Height"), false, () => AddLayer(new NormalFromHeightLayer()));
+            menu.AddItem(new GUIContent("FX/Invert"), false, () => AddLayer(new InvertLayer()));
             menu.DropDown(buttonRect);
         }
 
@@ -702,33 +707,12 @@ namespace Unmanaged.LayeredTexture.Editor
 
         void DrawTexturePathSource(Rect rect, SerializedProperty source)
         {
-            var path = ReadAssetPath(source.FindPropertyRelative("Path"));
-            var valid = SourceResolver.TryResolve(context.PreviewRecipe, ReadTextureSource(source), out _);
-            var buttonRect = new Rect(rect.xMax - 48f, rect.y, 48f, rect.height);
-            var pathRect = new Rect(rect.x, rect.y, rect.width - 52f, rect.height);
-            var tint = valid
-                ? new Color(0.34f, 0.62f, 0.34f, EditorGUIUtility.isProSkin ? 0.22f : 0.14f)
-                : new Color(0.72f, 0.32f, 0.32f, EditorGUIUtility.isProSkin ? 0.22f : 0.14f);
-
-            EditorGUI.DrawRect(pathRect, tint);
-
-            using (new EditorGUI.DisabledScope(true))
-                EditorGUI.TextField(pathRect, path.Path ?? string.Empty);
-
-            if (GUI.Button(buttonRect, "Pick"))
-                PickRelativeTexture(source.propertyPath);
-        }
-
-        void PickRelativeTexture(string sourcePropertyPath)
-        {
-            RelativeTexturePickerWindow.Show(relativePath =>
-            {
-                serializedObject.Update();
-                var source = serializedObject.FindProperty(sourcePropertyPath);
-                AssignTextureSource(source, AssetPath.Relative(relativePath));
-                serializedObject.ApplyModifiedProperties();
-                MarkPreviewDirty();
-            });
+            AssetPathEditorGUI.Draw(
+                rect,
+                source.FindPropertyRelative("Path"),
+                AssetPathPickerKind.TextureFile,
+                GUIContent.none,
+                MarkPreviewDirty);
         }
 
         void AssignTextureSource(SerializedProperty source, Texture texture)
@@ -737,7 +721,7 @@ namespace Unmanaged.LayeredTexture.Editor
             var path = source.FindPropertyRelative("Path");
             var runtimeTexture = source.FindPropertyRelative("RuntimeTexture");
 
-            WriteAssetPath(path, default);
+            AssetPathEditorGUI.Write(path, default);
             runtimeTexture.objectReferenceValue = null;
 
             if (texture == null)
@@ -759,19 +743,12 @@ namespace Unmanaged.LayeredTexture.Editor
                         out sourcePath)))
             {
                 kind.enumValueIndex = (int)TextureSourceKind.File;
-                WriteAssetPath(path, sourcePath);
+                AssetPathEditorGUI.Write(path, sourcePath);
                 return;
             }
 
             kind.enumValueIndex = (int)TextureSourceKind.RuntimeTextureReference;
             runtimeTexture.objectReferenceValue = texture;
-        }
-
-        static void AssignTextureSource(SerializedProperty source, AssetPath assetPath)
-        {
-            source.FindPropertyRelative("Kind").enumValueIndex = (int)TextureSourceKind.File;
-            WriteAssetPath(source.FindPropertyRelative("Path"), assetPath);
-            source.FindPropertyRelative("RuntimeTexture").objectReferenceValue = null;
         }
 
         static void DrawNoiseFields(ref Rect rect, SerializedProperty layer)
@@ -978,21 +955,9 @@ namespace Unmanaged.LayeredTexture.Editor
         TextureSource ReadTextureSource(SerializedProperty source) => new()
         {
             Kind = (TextureSourceKind)source.FindPropertyRelative("Kind").enumValueIndex,
-            Path = ReadAssetPath(source.FindPropertyRelative("Path")),
+            Path = AssetPathEditorGUI.Read(source.FindPropertyRelative("Path")),
             RuntimeTexture = source.FindPropertyRelative("RuntimeTexture").objectReferenceValue as Texture
         };
-
-        static AssetPath ReadAssetPath(SerializedProperty path) => new()
-        {
-            Mode = (AssetPathMode)path.FindPropertyRelative("Mode").enumValueIndex,
-            Path = path.FindPropertyRelative("Path").stringValue
-        };
-
-        static void WriteAssetPath(SerializedProperty path, AssetPath assetPath)
-        {
-            path.FindPropertyRelative("Mode").enumValueIndex = (int)assetPath.Mode;
-            path.FindPropertyRelative("Path").stringValue = assetPath.Path;
-        }
 
         static Rect NextLine(ref Rect rect)
         {
@@ -1035,6 +1000,7 @@ namespace Unmanaged.LayeredTexture.Editor
                 TransformLayer => "Transform",
                 WaterWavesLayer => "Water Waves",
                 NormalFromHeightLayer => "Normal From Height",
+                InvertLayer => "Invert",
                 RecipeReferenceLayer => "Recipe Reference",
                 _ => layer.managedReferenceValue.GetType().Name
             };

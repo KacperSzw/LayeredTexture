@@ -97,6 +97,7 @@ namespace Unmanaged.LayeredTexture
         /// <summary>
         /// File path used by file texture sources.
         /// </summary>
+        [AssetPathPicker(AssetPathPickerKind.TextureFile)]
         public AssetPath Path;
 
         /// <summary>

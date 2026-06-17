@@ -112,10 +112,10 @@ namespace Unmanaged.LayeredTexture.Editor
             return true;
         }
 
-        static TextureFormat TextureFormatFor(ExportFileFormat format) =>
+        internal static TextureFormat TextureFormatFor(ExportFileFormat format) =>
             format == ExportFileFormat.EXR ? TextureFormat.RGBAFloat : TextureFormat.RGBA32;
 
-        static byte[] Encode(Texture2D texture, ExportFileFormat format) =>
+        internal static byte[] Encode(Texture2D texture, ExportFileFormat format) =>
             format switch
             {
                 ExportFileFormat.PNG => ImageConversion.EncodeToPNG(texture),
@@ -124,7 +124,7 @@ namespace Unmanaged.LayeredTexture.Editor
                 _ => null
             };
 
-        static void ApplyImporter(string assetPath, OutputProfile output)
+        internal static void ApplyImporter(string assetPath, OutputProfile output)
         {
             if (AssetImporter.GetAtPath(assetPath) is not TextureImporter importer)
                 return;

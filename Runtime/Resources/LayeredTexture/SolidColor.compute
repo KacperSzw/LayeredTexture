@@ -7,6 +7,7 @@
 #pragma kernel BlurHorizontal
 #pragma kernel BlurVertical
 #pragma kernel Transform
+#pragma kernel Invert
 
 #include "LayeredTextureCommon.hlsl"
 
@@ -596,6 +597,29 @@ void Transform(uint3 id : SV_DispatchThreadID)
     float2 uv = (id.xy + 0.5) / resolution;
     float4 previous = _Previous.Load(pixel);
     float4 candidate = LT_SamplePreviousWrapped(LT_TransformUv(uv), resolution);
+    _Result[id.xy] = LT_ApplyLayer(
+        previous,
+        candidate,
+        LT_LayerMask(uv),
+        _Opacity,
+        _BlendMode,
+        (uint4)_InputSwizzle,
+        _WriteMask,
+        _RawPreview);
+}
+
+[numthreads(8, 8, 1)]
+void Invert(uint3 id : SV_DispatchThreadID)
+{
+    uint2 resolution = (uint2)_Resolution.xy;
+
+    if (id.x >= resolution.x || id.y >= resolution.y)
+        return;
+
+    int3 pixel = int3(id.xy, 0);
+    float2 uv = (id.xy + 0.5) / resolution;
+    float4 previous = _Previous.Load(pixel);
+    float4 candidate = 1.0 - previous;
     _Result[id.xy] = LT_ApplyLayer(
         previous,
         candidate,

@@ -17,6 +17,7 @@ namespace Unmanaged.LayeredTexture
         internal const string BlurHorizontalKernel = "BlurHorizontal";
         internal const string BlurVerticalKernel = "BlurVertical";
         internal const string TransformKernel = "Transform";
+        internal const string InvertKernel = "Invert";
 
         const string ShaderPath = "LayeredTexture/SolidColor";
 

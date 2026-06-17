@@ -79,7 +79,8 @@ namespace Unmanaged.LayeredTexture
             Resolution = new Vector2Int(1024, 1024),
             WorkingFormat = GraphicsFormat.R16G16B16A16_UNorm,
             OutputGraphicsFormat = GraphicsFormat.R8G8B8A8_UNorm,
-            ExportFormat = ExportFileFormat.PNG
+            ExportFormat = ExportFileFormat.PNG,
+            GenerateMips = true
         };
     }
 }

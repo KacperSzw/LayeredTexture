@@ -17,7 +17,7 @@ public sealed class TextureRecipeValidatorTests
         Assert.That(recipe.Output.WorkingFormat, Is.EqualTo(GraphicsFormat.R16G16B16A16_UNorm));
         Assert.That(recipe.Output.OutputGraphicsFormat, Is.EqualTo(GraphicsFormat.R8G8B8A8_UNorm));
         Assert.That(recipe.Output.ExportFormat, Is.EqualTo(ExportFileFormat.PNG));
-        Assert.That(recipe.Output.GenerateMips, Is.False);
+        Assert.That(recipe.Output.GenerateMips, Is.True);
         Assert.That(recipe.Output.SRGB, Is.False);
 
         Object.DestroyImmediate(recipe);

@@ -57,6 +57,31 @@ namespace Unmanaged.LayeredTexture
             return ValidateRecipe(recipe, output, new System.Collections.Generic.HashSet<TextureRecipe>(), out error);
         }
 
+        public static bool ValidateRuntime(LayerStack stack, OutputProfile output) =>
+            ValidateRuntime(stack, output, out _);
+
+        public static bool ValidateRuntime(LayerStack stack, OutputProfile output, out string error)
+        {
+            if (!SystemInfo.supportsComputeShaders)
+                return Fail("LayeredTexture requires compute shader support.", out error);
+
+            var valid = ValidateOutput(output, out error);
+
+            if (!ValidateStack(
+                    stack,
+                    output.Resolution,
+                    new System.Collections.Generic.HashSet<TextureRecipe>(),
+                    out var stackError))
+            {
+                if (error == null)
+                    error = stackError;
+
+                valid = false;
+            }
+
+            return valid;
+        }
+
         static bool ValidateRecipe(
             TextureRecipe recipe,
             OutputProfile output,
@@ -184,6 +209,8 @@ namespace Unmanaged.LayeredTexture
                         && LayerCompute.TryGetKernel(LayerCompute.BlurVerticalKernel, out _, out _, out error);
                 case TransformLayer:
                     return LayerCompute.TryGetKernel(LayerCompute.TransformKernel, out _, out _, out error);
+                case InvertLayer:
+                    return LayerCompute.TryGetKernel(LayerCompute.InvertKernel, out _, out _, out error);
                 case RecipeReferenceLayer recipeReferenceLayer:
                     return ValidateRecipeReferenceLayer(recipeReferenceLayer, visiting, out error);
                 default:

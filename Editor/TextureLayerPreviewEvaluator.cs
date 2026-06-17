@@ -33,7 +33,7 @@ namespace Unmanaged.LayeredTexture.Editor
             OutputProfile output,
             ITextureSourceResolver sourceResolver)
         {
-            if (recipe == null || layer == null || !layer.SupportsRawPreview)
+            if (layer == null || !layer.SupportsRawPreview)
                 return null;
 
             output = PreviewOutput(output);

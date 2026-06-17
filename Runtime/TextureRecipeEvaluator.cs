@@ -61,6 +61,22 @@ namespace Unmanaged.LayeredTexture
                 new System.Collections.Generic.HashSet<TextureRecipe>());
         }
 
+        public static RenderTexture Evaluate(
+            LayerStack stack,
+            OutputProfile output,
+            ITextureSourceResolver sourceResolver)
+        {
+            if (!TextureRecipeValidator.ValidateRuntime(stack, output))
+                return null;
+
+            return EvaluateStack(
+                stack,
+                output,
+                null,
+                sourceResolver,
+                new System.Collections.Generic.HashSet<TextureRecipe>());
+        }
+
         static RenderTexture EvaluateRecipe(
             TextureRecipe recipe,
             OutputProfile output,
@@ -75,33 +91,43 @@ namespace Unmanaged.LayeredTexture
 
             try
             {
-                using var ctx = new BakeContext(output, recipe, sourceResolver);
-
-                ctx.ClearCurrent(Color.clear);
-
-                for (var i = 0; i < recipe.RootStack.Layers.Count; i++)
-                {
-                    var layer = recipe.RootStack.Layers[i];
-
-                    if (!layer.Enabled)
-                        continue;
-
-                    if (!CanProcess(layer, ctx))
-                        continue;
-
-                    if (!PrepareMask(ctx, layer.Mask, sourceResolver, visiting))
-                        return null;
-
-                    ctx.SwapCurrentToPrevious();
-                    layer.Process(ctx);
-                }
-
-                return ctx.DetachCurrent();
+                return EvaluateStack(recipe.RootStack, output, recipe, sourceResolver, visiting);
             }
             finally
             {
                 visiting.Remove(recipe);
             }
+        }
+
+        static RenderTexture EvaluateStack(
+            LayerStack stack,
+            OutputProfile output,
+            TextureRecipe recipe,
+            ITextureSourceResolver sourceResolver,
+            System.Collections.Generic.HashSet<TextureRecipe> visiting)
+        {
+            using var ctx = new BakeContext(output, recipe, sourceResolver);
+
+            ctx.ClearCurrent(Color.clear);
+
+            for (var i = 0; i < stack.Layers.Count; i++)
+            {
+                var layer = stack.Layers[i];
+
+                if (!layer.Enabled)
+                    continue;
+
+                if (!CanProcess(layer, ctx))
+                    continue;
+
+                if (!PrepareMask(ctx, layer.Mask, sourceResolver, visiting))
+                    return null;
+
+                ctx.SwapCurrentToPrevious();
+                layer.Process(ctx);
+            }
+
+            return ctx.DetachCurrent();
         }
 
         static bool PrepareMask(
