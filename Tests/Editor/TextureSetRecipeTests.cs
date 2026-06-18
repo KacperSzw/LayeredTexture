@@ -41,6 +41,22 @@ public sealed class TextureSetRecipeTests
     }
 
     [Test]
+    public void Bake_SlotTextureType_AppliesImporterTextureType()
+    {
+        IgnoreUnsupportedCompute();
+
+        var set = CreateSet(TestFolder + "/Types.asset");
+        var slot = SolidSlot("Mask", Color.white);
+        slot.Output.TextureType = OutputTextureType.SingleChannel;
+        set.Recipes.Add(slot);
+
+        Assert.That(TextureSetRecipeBaker.Bake(set, out var error), Is.True, error);
+
+        var importer = (TextureImporter)AssetImporter.GetAtPath(TestFolder + "/Types_Mask.png");
+        Assert.That(importer.textureType, Is.EqualTo(TextureImporterType.SingleChannel));
+    }
+
+    [Test]
     public void Bake_DuplicateSanitizedSlotNames_Fails()
     {
         IgnoreUnsupportedCompute();

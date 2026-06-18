@@ -130,6 +130,7 @@ namespace Unmanaged.LayeredTexture.Editor
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("WorkingFormat"));
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("OutputGraphicsFormat"));
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("ExportFormat"));
+                EditorGUILayout.PropertyField(output.FindPropertyRelative("TextureType"));
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("GenerateMips"));
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("SRGB"));
             }

@@ -62,6 +62,11 @@ namespace Unmanaged.LayeredTexture
         public ExportFileFormat ExportFormat;
 
         /// <summary>
+        /// Unity importer texture type applied to editor-baked texture files.
+        /// </summary>
+        public OutputTextureType TextureType;
+
+        /// <summary>
         /// Whether the generated asset importer should generate mipmaps.
         /// </summary>
         public bool GenerateMips;
@@ -82,5 +87,18 @@ namespace Unmanaged.LayeredTexture
             ExportFormat = ExportFileFormat.PNG,
             GenerateMips = true
         };
+    }
+
+    public enum OutputTextureType
+    {
+        Default,
+        NormalMap,
+        SingleChannel,
+        Sprite,
+        GUI,
+        Cursor,
+        Cookie,
+        Lightmap,
+        Shadowmask
     }
 }

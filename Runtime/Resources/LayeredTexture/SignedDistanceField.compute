@@ -1,0 +1,223 @@
+#pragma kernel SignedDistanceField
+
+#include "LayeredTextureCommon.hlsl"
+
+RWTexture2D<float4> _Result;
+Texture2D<float4> _Previous;
+Texture2D<float4> _Mask;
+SamplerState sampler_Mask;
+
+float4 _Resolution;
+float4 _SdfSettings;
+uint _InputUsage;
+float _Opacity;
+uint _BlendMode;
+float4 _InputSwizzle;
+uint _WriteMask;
+uint _UseMask;
+uint _MaskUsage;
+uint _MaskInvert;
+float _MaskOpacity;
+uint _RawPreview;
+
+float LT_LayerMask(float2 uv)
+{
+    if (_UseMask == 0)
+        return 1.0;
+
+    return LT_MaskValue(_Mask.SampleLevel(sampler_Mask, uv, 0), _MaskUsage, _MaskInvert, _MaskOpacity);
+}
+
+int2 LT_WrapPixel(int2 pixel, int2 resolution)
+{
+    pixel.x = (int)(pixel.x - floor((float)pixel.x / resolution.x) * resolution.x);
+    pixel.y = (int)(pixel.y - floor((float)pixel.y / resolution.y) * resolution.y);
+    return pixel;
+}
+
+float LT_InputValue(float4 sample)
+{
+    if (_InputUsage == LT_MASK_R)
+        return sample.r;
+
+    if (_InputUsage == LT_MASK_G)
+        return sample.g;
+
+    if (_InputUsage == LT_MASK_B)
+        return sample.b;
+
+    if (_InputUsage == LT_MASK_A)
+        return sample.a;
+
+    return dot(sample.rgb, float3(0.2126, 0.7152, 0.0722));
+}
+
+float LT_MaskValueAt(int2 pixel, int2 resolution)
+{
+    return LT_InputValue(_Previous.Load(int3(LT_WrapPixel(pixel, resolution), 0)));
+}
+
+bool LT_CrossesThreshold(float a, float b, float threshold)
+{
+    return (a < threshold && b >= threshold)
+        || (a >= threshold && b < threshold);
+}
+
+float2 LT_EdgePoint(float2 aPosition, float aValue, float2 bPosition, float bValue, float threshold)
+{
+    float denominator = bValue - aValue;
+    float t = abs(denominator) > 0.00001
+        ? saturate((threshold - aValue) / denominator)
+        : 0.0;
+    return lerp(aPosition, bPosition, t);
+}
+
+float LT_DistanceSqToSegment(float2 p, float2 a, float2 b)
+{
+    float2 ab = b - a;
+    float denominator = dot(ab, ab);
+    float t = denominator > 0.00001
+        ? saturate(dot(p - a, ab) / denominator)
+        : 0.0;
+    float2 closest = a + ab * t;
+    float2 delta = p - closest;
+    return dot(delta, delta);
+}
+
+void LT_AddSegmentDistance(float2 p, float2 a, float2 b, inout float minDistanceSq)
+{
+    minDistanceSq = min(minDistanceSq, LT_DistanceSqToSegment(p, a, b));
+}
+
+void LT_AddCellDistance(float2 p, int2 cell, int2 resolution, float threshold, inout float minDistanceSq)
+{
+    float v0 = LT_MaskValueAt(cell, resolution);
+    float v1 = LT_MaskValueAt(cell + int2(1, 0), resolution);
+    float v2 = LT_MaskValueAt(cell + int2(1, 1), resolution);
+    float v3 = LT_MaskValueAt(cell + int2(0, 1), resolution);
+    uint mask = 0;
+
+    if (v0 >= threshold)
+        mask |= 1;
+
+    if (v1 >= threshold)
+        mask |= 2;
+
+    if (v2 >= threshold)
+        mask |= 4;
+
+    if (v3 >= threshold)
+        mask |= 8;
+
+    if (mask == 0 || mask == 15)
+        return;
+
+    float2 p0 = (float2)cell;
+    float2 p1 = (float2)(cell + int2(1, 0));
+    float2 p2 = (float2)(cell + int2(1, 1));
+    float2 p3 = (float2)(cell + int2(0, 1));
+    float2 e0 = LT_EdgePoint(p0, v0, p1, v1, threshold);
+    float2 e1 = LT_EdgePoint(p1, v1, p2, v2, threshold);
+    float2 e2 = LT_EdgePoint(p2, v2, p3, v3, threshold);
+    float2 e3 = LT_EdgePoint(p3, v3, p0, v0, threshold);
+
+    if (mask == 1 || mask == 14)
+        LT_AddSegmentDistance(p, e3, e0, minDistanceSq);
+    else if (mask == 2 || mask == 13)
+        LT_AddSegmentDistance(p, e0, e1, minDistanceSq);
+    else if (mask == 3 || mask == 12)
+        LT_AddSegmentDistance(p, e3, e1, minDistanceSq);
+    else if (mask == 4 || mask == 11)
+        LT_AddSegmentDistance(p, e1, e2, minDistanceSq);
+    else if (mask == 6 || mask == 9)
+        LT_AddSegmentDistance(p, e0, e2, minDistanceSq);
+    else if (mask == 7 || mask == 8)
+        LT_AddSegmentDistance(p, e3, e2, minDistanceSq);
+    else if (mask == 5)
+    {
+        float center = (v0 + v1 + v2 + v3) * 0.25;
+
+        if (center >= threshold)
+        {
+            LT_AddSegmentDistance(p, e0, e1, minDistanceSq);
+            LT_AddSegmentDistance(p, e2, e3, minDistanceSq);
+        }
+        else
+        {
+            LT_AddSegmentDistance(p, e3, e0, minDistanceSq);
+            LT_AddSegmentDistance(p, e1, e2, minDistanceSq);
+        }
+    }
+    else if (mask == 10)
+    {
+        float center = (v0 + v1 + v2 + v3) * 0.25;
+
+        if (center >= threshold)
+        {
+            LT_AddSegmentDistance(p, e3, e0, minDistanceSq);
+            LT_AddSegmentDistance(p, e1, e2, minDistanceSq);
+        }
+        else
+        {
+            LT_AddSegmentDistance(p, e0, e1, minDistanceSq);
+            LT_AddSegmentDistance(p, e2, e3, minDistanceSq);
+        }
+    }
+}
+
+float LT_EncodeSdf(float signedDistance, float spread, float edgeValue)
+{
+    edgeValue = saturate(edgeValue);
+
+    if (signedDistance >= 0.0)
+        return lerp(edgeValue, 1.0, saturate(signedDistance / spread));
+
+    return lerp(edgeValue, 0.0, saturate(-signedDistance / spread));
+}
+
+[numthreads(8, 8, 1)]
+void SignedDistanceField(uint3 id : SV_DispatchThreadID)
+{
+    uint2 bounds = (uint2)_Resolution.xy;
+
+    if (id.x >= bounds.x || id.y >= bounds.y)
+        return;
+
+    int2 resolution = (int2)bounds;
+    int2 pixel = (int2)id.xy;
+    float2 p = (float2)pixel;
+    float threshold = saturate(_SdfSettings.x);
+    float spread = max(_SdfSettings.y, 0.0001);
+    float edgeValue = _SdfSettings.z;
+    bool invertSign = _SdfSettings.w != 0.0;
+    int radius = (int)ceil(spread) + 1;
+    float minDistanceSq = spread * spread;
+
+    [loop]
+    for (int y = -radius; y <= radius; y++)
+    {
+        [loop]
+        for (int x = -radius; x <= radius; x++)
+            LT_AddCellDistance(p, pixel + int2(x, y), resolution, threshold, minDistanceSq);
+    }
+
+    float maskValue = LT_MaskValueAt(pixel, resolution);
+    float signValue = maskValue >= threshold ? 1.0 : -1.0;
+
+    if (invertSign)
+        signValue = -signValue;
+
+    float signedDistance = sqrt(minDistanceSq) * signValue;
+    float value = LT_EncodeSdf(signedDistance, spread, edgeValue);
+    float2 uv = ((float2)id.xy + 0.5) / _Resolution.xy;
+    float4 previous = _Previous.Load(int3(pixel, 0));
+    _Result[id.xy] = LT_ApplyLayer(
+        previous,
+        value.xxxx,
+        LT_LayerMask(uv),
+        _Opacity,
+        _BlendMode,
+        (uint4)_InputSwizzle,
+        _WriteMask,
+        _RawPreview);
+}

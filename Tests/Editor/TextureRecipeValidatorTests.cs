@@ -17,6 +17,7 @@ public sealed class TextureRecipeValidatorTests
         Assert.That(recipe.Output.WorkingFormat, Is.EqualTo(GraphicsFormat.R16G16B16A16_UNorm));
         Assert.That(recipe.Output.OutputGraphicsFormat, Is.EqualTo(GraphicsFormat.R8G8B8A8_UNorm));
         Assert.That(recipe.Output.ExportFormat, Is.EqualTo(ExportFileFormat.PNG));
+        Assert.That(recipe.Output.TextureType, Is.EqualTo(OutputTextureType.Default));
         Assert.That(recipe.Output.GenerateMips, Is.True);
         Assert.That(recipe.Output.SRGB, Is.False);
 
@@ -38,6 +39,12 @@ public sealed class TextureRecipeValidatorTests
 
         Assert.That(blurLayer.RadiusMode, Is.EqualTo(BlurRadiusMode.UV));
         Assert.That(blurLayer.Radius, Is.EqualTo(0.02f).Within(0.0001f));
+    }
+
+    [Test]
+    public void SignedDistanceFieldLayer_MaxSpreadPixels_Is32()
+    {
+        Assert.That(SignedDistanceFieldLayer.MaxSpreadPixels, Is.EqualTo(32f));
     }
 
     [Test]
@@ -195,6 +202,48 @@ public sealed class TextureRecipeValidatorTests
 
         var recipe = CreateRecipe(4, 4);
         recipe.RootStack.Layers.Add(new TransformLayer());
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void ValidateRuntime_HistogramSelectLayer_IsValid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(1, 1);
+        recipe.RootStack.Layers.Add(new HistogramSelectLayer());
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void ValidateRuntime_SaturationLayer_IsValid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(1, 1);
+        recipe.RootStack.Layers.Add(new SaturationLayer());
+
+        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
+        LogAssert.NoUnexpectedReceived();
+
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void ValidateRuntime_SignedDistanceFieldLayer_IsValid()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(1, 1);
+        recipe.RootStack.Layers.Add(new SignedDistanceFieldLayer());
 
         Assert.That(TextureRecipeValidator.ValidateRuntime(recipe), Is.True);
         LogAssert.NoUnexpectedReceived();

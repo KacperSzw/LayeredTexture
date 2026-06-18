@@ -129,6 +129,7 @@ namespace Unmanaged.LayeredTexture.Editor
             if (AssetImporter.GetAtPath(assetPath) is not TextureImporter importer)
                 return;
 
+            importer.textureType = TextureImporterTypeFor(output.TextureType);
             importer.sRGBTexture = output.SRGB;
             importer.mipmapEnabled = output.GenerateMips;
             importer.alphaIsTransparency = false;
@@ -136,5 +137,19 @@ namespace Unmanaged.LayeredTexture.Editor
             importer.isReadable = false;
             importer.SaveAndReimport();
         }
+
+        static TextureImporterType TextureImporterTypeFor(OutputTextureType textureType) =>
+            textureType switch
+            {
+                OutputTextureType.NormalMap => TextureImporterType.NormalMap,
+                OutputTextureType.SingleChannel => TextureImporterType.SingleChannel,
+                OutputTextureType.Sprite => TextureImporterType.Sprite,
+                OutputTextureType.GUI => TextureImporterType.GUI,
+                OutputTextureType.Cursor => TextureImporterType.Cursor,
+                OutputTextureType.Cookie => TextureImporterType.Cookie,
+                OutputTextureType.Lightmap => TextureImporterType.Lightmap,
+                OutputTextureType.Shadowmask => TextureImporterType.Shadowmask,
+                _ => TextureImporterType.Default
+            };
     }
 }

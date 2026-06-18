@@ -50,12 +50,39 @@ public sealed class TextureRecipeBakerTests
             Assert.That(AssetDatabase.LoadAssetAtPath<Texture2D>(Path), Is.Not.Null);
 
             var importer = (TextureImporter)AssetImporter.GetAtPath(Path);
+            Assert.That(importer.textureType, Is.EqualTo(TextureImporterType.Default));
             Assert.That(importer.sRGBTexture, Is.True);
             Assert.That(importer.mipmapEnabled, Is.True);
             Assert.That(importer.alphaIsTransparency, Is.False);
             Assert.That(importer.textureCompression, Is.EqualTo(TextureImporterCompression.Uncompressed));
             Assert.That(importer.isReadable, Is.False);
             AssertPngPixels(Path, new Color(0.25f, 0.5f, 0.75f, 1f));
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_OutputTextureType_AppliesImporterTextureType()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/SingleChannel.png";
+        var recipe = CreateRecipe(Path);
+        recipe.Output.TextureType = OutputTextureType.SingleChannel;
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = Color.white
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+
+            var importer = (TextureImporter)AssetImporter.GetAtPath(Path);
+            Assert.That(importer.textureType, Is.EqualTo(TextureImporterType.SingleChannel));
         }
         finally
         {

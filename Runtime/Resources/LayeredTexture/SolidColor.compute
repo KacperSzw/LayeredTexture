@@ -8,6 +8,8 @@
 #pragma kernel BlurVertical
 #pragma kernel Transform
 #pragma kernel Invert
+#pragma kernel HistogramSelect
+#pragma kernel Saturation
 
 #include "LayeredTextureCommon.hlsl"
 
@@ -38,6 +40,8 @@ uint _BlurPairCount;
 float4 _BlurPairs[64];
 float4 _TransformSettings;
 float4 _TransformPivotRotation;
+float4 _HistogramSelectSettings;
+float4 _SaturationSettings;
 float _Opacity;
 uint _BlendMode;
 float4 _InputSwizzle;
@@ -380,6 +384,109 @@ float LT_HeightValue(float4 sample, uint usage)
     return dot(sample.rgb, float3(0.2126, 0.7152, 0.0722));
 }
 
+float LT_HistogramValue(float4 sample)
+{
+    uint mode = (uint)round(_HistogramSelectSettings.x);
+
+    if (mode == 1)
+        return max(max(sample.r, sample.g), sample.b);
+
+    return dot(sample.rgb, float3(0.2126, 0.7152, 0.0722));
+}
+
+float LT_HistogramSelection(float4 sample)
+{
+    float value = LT_HistogramValue(sample);
+    float position = saturate(_HistogramSelectSettings.y);
+    float halfRange = max(_HistogramSelectSettings.z, 0.0) * 0.5;
+    float gradient = max(_HistogramSelectSettings.w, 0.0);
+    float distanceValue = abs(value - position);
+
+    if (gradient <= 0.0001)
+        return distanceValue <= halfRange ? 1.0 : 0.0;
+
+    return 1.0 - smoothstep(halfRange, halfRange + gradient, distanceValue);
+}
+
+float3 LT_RGBToHSL(float3 color)
+{
+    float maxValue = max(max(color.r, color.g), color.b);
+    float minValue = min(min(color.r, color.g), color.b);
+    float delta = maxValue - minValue;
+    float lightness = (maxValue + minValue) * 0.5;
+    float hue = 0.0;
+    float saturation = 0.0;
+
+    if (delta > 0.00001)
+    {
+        saturation = delta / (1.0 - abs(2.0 * lightness - 1.0));
+
+        if (maxValue == color.r)
+            hue = (color.g - color.b) / delta + (color.g < color.b ? 6.0 : 0.0);
+        else if (maxValue == color.g)
+            hue = (color.b - color.r) / delta + 2.0;
+        else
+            hue = (color.r - color.g) / delta + 4.0;
+
+        hue /= 6.0;
+    }
+
+    return float3(hue, saturation, lightness);
+}
+
+float LT_HueToRGB(float p, float q, float t)
+{
+    t = frac(t);
+
+    if (t < 1.0 / 6.0)
+        return p + (q - p) * 6.0 * t;
+
+    if (t < 0.5)
+        return q;
+
+    if (t < 2.0 / 3.0)
+        return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+
+    return p;
+}
+
+float3 LT_HSLToRGB(float3 hsl)
+{
+    float hue = frac(hsl.x);
+    float saturation = saturate(hsl.y);
+    float lightness = saturate(hsl.z);
+
+    if (saturation <= 0.00001)
+        return float3(lightness, lightness, lightness);
+
+    float q = lightness < 0.5
+        ? lightness * (1.0 + saturation)
+        : lightness + saturation - lightness * saturation;
+    float p = 2.0 * lightness - q;
+
+    return float3(
+        LT_HueToRGB(p, q, hue + 1.0 / 3.0),
+        LT_HueToRGB(p, q, hue),
+        LT_HueToRGB(p, q, hue - 1.0 / 3.0));
+}
+
+float LT_AdjustUnit(float value, float adjustment)
+{
+    adjustment = clamp(adjustment, -1.0, 1.0);
+    return adjustment >= 0.0
+        ? lerp(value, 1.0, adjustment)
+        : lerp(value, 0.0, -adjustment);
+}
+
+float4 LT_AdjustSaturation(float4 sample)
+{
+    float3 hsl = LT_RGBToHSL(saturate(sample.rgb));
+    hsl.x = frac(hsl.x + _SaturationSettings.x / 6.28318530718);
+    hsl.y = LT_AdjustUnit(hsl.y, _SaturationSettings.y);
+    hsl.z = LT_AdjustUnit(hsl.z, _SaturationSettings.z);
+    return float4(LT_HSLToRGB(hsl), sample.a);
+}
+
 float LT_HeightAt(int2 pixel, uint2 resolution)
 {
     return LT_HeightValue(_Previous.Load(int3(LT_WrapAdjacentPixel(pixel, resolution), 0)), _HeightUsage);
@@ -620,6 +727,52 @@ void Invert(uint3 id : SV_DispatchThreadID)
     float2 uv = (id.xy + 0.5) / resolution;
     float4 previous = _Previous.Load(pixel);
     float4 candidate = 1.0 - previous;
+    _Result[id.xy] = LT_ApplyLayer(
+        previous,
+        candidate,
+        LT_LayerMask(uv),
+        _Opacity,
+        _BlendMode,
+        (uint4)_InputSwizzle,
+        _WriteMask,
+        _RawPreview);
+}
+
+[numthreads(8, 8, 1)]
+void HistogramSelect(uint3 id : SV_DispatchThreadID)
+{
+    uint2 resolution = (uint2)_Resolution.xy;
+
+    if (id.x >= resolution.x || id.y >= resolution.y)
+        return;
+
+    int3 pixel = int3(id.xy, 0);
+    float2 uv = (id.xy + 0.5) / resolution;
+    float4 previous = _Previous.Load(pixel);
+    float value = LT_HistogramSelection(previous);
+    _Result[id.xy] = LT_ApplyLayer(
+        previous,
+        value.xxxx,
+        LT_LayerMask(uv),
+        _Opacity,
+        _BlendMode,
+        (uint4)_InputSwizzle,
+        _WriteMask,
+        _RawPreview);
+}
+
+[numthreads(8, 8, 1)]
+void Saturation(uint3 id : SV_DispatchThreadID)
+{
+    uint2 resolution = (uint2)_Resolution.xy;
+
+    if (id.x >= resolution.x || id.y >= resolution.y)
+        return;
+
+    int3 pixel = int3(id.xy, 0);
+    float2 uv = (id.xy + 0.5) / resolution;
+    float4 previous = _Previous.Load(pixel);
+    float4 candidate = LT_AdjustSaturation(previous);
     _Result[id.xy] = LT_ApplyLayer(
         previous,
         candidate,

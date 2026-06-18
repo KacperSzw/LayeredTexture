@@ -18,6 +18,8 @@ namespace Unmanaged.LayeredTexture
         internal const string BlurVerticalKernel = "BlurVertical";
         internal const string TransformKernel = "Transform";
         internal const string InvertKernel = "Invert";
+        internal const string HistogramSelectKernel = "HistogramSelect";
+        internal const string SaturationKernel = "Saturation";
 
         const string ShaderPath = "LayeredTexture/SolidColor";
 
@@ -43,6 +45,8 @@ namespace Unmanaged.LayeredTexture
         internal static readonly int BlurPairsId = Shader.PropertyToID("_BlurPairs");
         internal static readonly int TransformSettingsId = Shader.PropertyToID("_TransformSettings");
         internal static readonly int TransformPivotRotationId = Shader.PropertyToID("_TransformPivotRotation");
+        internal static readonly int HistogramSelectSettingsId = Shader.PropertyToID("_HistogramSelectSettings");
+        internal static readonly int SaturationSettingsId = Shader.PropertyToID("_SaturationSettings");
 
         internal static readonly int ResultId = Shader.PropertyToID("_Result");
         internal static readonly int PreviousId = Shader.PropertyToID("_Previous");

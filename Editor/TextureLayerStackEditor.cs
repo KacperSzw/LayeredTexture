@@ -374,6 +374,15 @@ namespace Unmanaged.LayeredTexture.Editor
                 case InvertLayer:
                     EditorGUI.LabelField(NextLine(ref rect), "Inverts selected write channels.");
                     break;
+                case HistogramSelectLayer:
+                    DrawHistogramSelectFields(ref rect, layer);
+                    break;
+                case SaturationLayer:
+                    DrawSaturationFields(ref rect, layer);
+                    break;
+                case SignedDistanceFieldLayer:
+                    DrawSignedDistanceFieldFields(ref rect, layer);
+                    break;
                 case RecipeReferenceLayer:
                     EditorGUI.PropertyField(NextLine(ref rect), layer.FindPropertyRelative("Recipe"));
                     break;
@@ -413,6 +422,9 @@ namespace Unmanaged.LayeredTexture.Editor
                 WaterWavesLayer => IsWaterWavesFoam(layer) ? 6 : 5,
                 NormalFromHeightLayer => 1,
                 InvertLayer => 1,
+                HistogramSelectLayer => 2,
+                SaturationLayer => 2,
+                SignedDistanceFieldLayer => 3,
                 RecipeReferenceLayer => 1,
                 _ => 2
             };
@@ -518,6 +530,9 @@ namespace Unmanaged.LayeredTexture.Editor
             menu.AddItem(new GUIContent("FX/Warp"), false, () => AddLayer(new WarpLayer()));
             menu.AddItem(new GUIContent("FX/Normal From Height"), false, () => AddLayer(new NormalFromHeightLayer()));
             menu.AddItem(new GUIContent("FX/Invert"), false, () => AddLayer(new InvertLayer()));
+            menu.AddItem(new GUIContent("FX/Histogram Select"), false, () => AddLayer(new HistogramSelectLayer()));
+            menu.AddItem(new GUIContent("FX/Hue/Saturation"), false, () => AddLayer(new SaturationLayer()));
+            menu.AddItem(new GUIContent("FX/SDF"), false, () => AddLayer(new SignedDistanceFieldLayer()));
             menu.DropDown(buttonRect);
         }
 
@@ -878,6 +893,79 @@ namespace Unmanaged.LayeredTexture.Editor
                 "Invert");
         }
 
+        static void DrawHistogramSelectFields(ref Rect rect, SerializedProperty layer)
+        {
+            DrawNoiseRow(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("Mode"),
+                "Mode",
+                layer.FindPropertyRelative("Position"),
+                "Position");
+            DrawNoiseRow(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("Range"),
+                "Range",
+                layer.FindPropertyRelative("Gradient"),
+                "Gradient");
+        }
+
+        static void DrawSaturationFields(ref Rect rect, SerializedProperty layer)
+        {
+            DrawLabeledField(NextLine(ref rect), layer.FindPropertyRelative("HueOffset"), "Hue");
+            var line = NextLine(ref rect);
+            var saturation = layer.FindPropertyRelative("Saturation");
+            var luminance = layer.FindPropertyRelative("Luminance");
+            const float Gap = 8f;
+            var width = (line.width - Gap) * 0.5f;
+            saturation.floatValue = EditorGUI.Slider(
+                new Rect(line.x, line.y, width, line.height),
+                "Saturation",
+                saturation.floatValue,
+                -1f,
+                1f);
+            luminance.floatValue = EditorGUI.Slider(
+                new Rect(line.x + width + Gap, line.y, width, line.height),
+                "Luminance",
+                luminance.floatValue,
+                -1f,
+                1f);
+        }
+
+        static void DrawSignedDistanceFieldFields(ref Rect rect, SerializedProperty layer)
+        {
+            var line = NextLine(ref rect);
+            const float Gap = 8f;
+            var width = (line.width - Gap) * 0.5f;
+            DrawLabeledField(
+                new Rect(line.x, line.y, width, line.height),
+                layer.FindPropertyRelative("InputUsage"),
+                "Input");
+            var threshold = layer.FindPropertyRelative("Threshold");
+            threshold.floatValue = EditorGUI.Slider(
+                new Rect(line.x + width + Gap, line.y, width, line.height),
+                new GUIContent("Threshold", "Input mask value used as the SDF contour."),
+                threshold.floatValue,
+                0f,
+                1f);
+
+            line = NextLine(ref rect);
+            var spreadPixels = layer.FindPropertyRelative("SpreadPixels");
+            var edgeValue = layer.FindPropertyRelative("EdgeValue");
+            spreadPixels.floatValue = EditorGUI.Slider(
+                new Rect(line.x, line.y, width, line.height),
+                "Spread Px",
+                spreadPixels.floatValue,
+                0f,
+                SignedDistanceFieldLayer.MaxSpreadPixels);
+            edgeValue.floatValue = EditorGUI.Slider(
+                new Rect(line.x + width + Gap, line.y, width, line.height),
+                new GUIContent("Edge", "Encoded SDF output value written exactly at the contour."),
+                edgeValue.floatValue,
+                0f,
+                1f);
+            DrawLabeledField(NextLine(ref rect), layer.FindPropertyRelative("InvertSign"), "Invert Sign");
+        }
+
         static bool IsWaterWavesFoam(SerializedProperty layer) =>
             (WaterWavesOutputMode)layer.FindPropertyRelative("OutputMode").enumValueIndex == WaterWavesOutputMode.Foam;
 
@@ -1001,6 +1089,9 @@ namespace Unmanaged.LayeredTexture.Editor
                 WaterWavesLayer => "Water Waves",
                 NormalFromHeightLayer => "Normal From Height",
                 InvertLayer => "Invert",
+                HistogramSelectLayer => "Histogram Select",
+                SaturationLayer => "Hue/Saturation",
+                SignedDistanceFieldLayer => "Signed Distance Field",
                 RecipeReferenceLayer => "Recipe Reference",
                 _ => layer.managedReferenceValue.GetType().Name
             };

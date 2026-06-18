@@ -211,6 +211,12 @@ namespace Unmanaged.LayeredTexture
                     return LayerCompute.TryGetKernel(LayerCompute.TransformKernel, out _, out _, out error);
                 case InvertLayer:
                     return LayerCompute.TryGetKernel(LayerCompute.InvertKernel, out _, out _, out error);
+                case HistogramSelectLayer:
+                    return LayerCompute.TryGetKernel(LayerCompute.HistogramSelectKernel, out _, out _, out error);
+                case SaturationLayer:
+                    return LayerCompute.TryGetKernel(LayerCompute.SaturationKernel, out _, out _, out error);
+                case SignedDistanceFieldLayer:
+                    return SignedDistanceFieldCompute.TryGetKernel(out _, out _, out error);
                 case RecipeReferenceLayer recipeReferenceLayer:
                     return ValidateRecipeReferenceLayer(recipeReferenceLayer, visiting, out error);
                 default:

@@ -1152,6 +1152,452 @@ public sealed class TextureRecipeEvaluatorTests
     }
 
     [Test]
+    public void Evaluate_HistogramSelectLayer_SelectsCenteredLuminanceBand()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(3, 1);
+        var source = CreateRowTexture(new[]
+        {
+            new Color(0.25f, 0.25f, 0.25f, 1f),
+            new Color(0.5f, 0.5f, 0.5f, 1f),
+            new Color(0.9f, 0.9f, 0.9f, 1f)
+        });
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        recipe.RootStack.Layers.Add(new HistogramSelectLayer
+        {
+            Position = 0.5f,
+            Range = 0.2f,
+            Gradient = 0f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        var pixels = ReadPixels(result);
+        AssertColor(pixels[0], Color.clear, "Pixel 0");
+        AssertColor(pixels[1], Color.white, "Pixel 1");
+        AssertColor(pixels[2], Color.clear, "Pixel 2");
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_HistogramSelectLayer_ValueModeUsesMaxChannel()
+    {
+        IgnoreUnsupportedCompute();
+
+        var luminanceRecipe = CreateRecipe();
+        var valueRecipe = CreateRecipe();
+        var source = CreateTexture(Color.red);
+        luminanceRecipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        luminanceRecipe.RootStack.Layers.Add(new HistogramSelectLayer
+        {
+            Mode = HistogramSelectionMode.Luminance,
+            Position = 1f,
+            Range = 0.1f,
+            Gradient = 0f
+        });
+        valueRecipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        valueRecipe.RootStack.Layers.Add(new HistogramSelectLayer
+        {
+            Mode = HistogramSelectionMode.Value,
+            Position = 1f,
+            Range = 0.1f,
+            Gradient = 0f
+        });
+
+        var luminance = TextureRecipeEvaluator.Evaluate(luminanceRecipe);
+        var value = TextureRecipeEvaluator.Evaluate(valueRecipe);
+
+        Assert.That(luminance, Is.Not.Null);
+        Assert.That(value, Is.Not.Null);
+        AssertTexturePixels(luminance, Color.clear);
+        AssertTexturePixels(value, Color.white);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(luminance);
+        Release(value);
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(luminanceRecipe);
+        Object.DestroyImmediate(valueRecipe);
+    }
+
+    [Test]
+    public void Evaluate_HistogramSelectLayer_GradientFeathersSelection()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(3, 1);
+        var source = CreateRowTexture(new[]
+        {
+            new Color(0.5f, 0.5f, 0.5f, 1f),
+            new Color(0.65f, 0.65f, 0.65f, 1f),
+            new Color(0.8f, 0.8f, 0.8f, 1f)
+        });
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        recipe.RootStack.Layers.Add(new HistogramSelectLayer
+        {
+            Position = 0.5f,
+            Range = 0.2f,
+            Gradient = 0.2f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        var pixels = ReadPixels(result);
+        Assert.That(pixels[0].r, Is.EqualTo(1f).Within(0.02f));
+        Assert.That(pixels[1].r, Is.EqualTo(0.84f).Within(0.04f));
+        Assert.That(pixels[2].r, Is.EqualTo(0f).Within(0.02f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_SaturationLayer_HueOffsetRotatesColor()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe();
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(1f, 0f, 0f, 0.7f)
+        });
+        recipe.RootStack.Layers.Add(new SaturationLayer
+        {
+            HueOffset = 120f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertTexturePixels(result, new Color(0f, 1f, 0f, 0.7f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_SaturationLayer_NegativeSaturationDesaturates()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe();
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = Color.red
+        });
+        recipe.RootStack.Layers.Add(new SaturationLayer
+        {
+            Saturation = -1f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertTexturePixels(result, new Color(0.5f, 0.5f, 0.5f, 1f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_SaturationLayer_PositiveLuminanceLightens()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe();
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.2f, 0.4f, 0.6f, 1f)
+        });
+        recipe.RootStack.Layers.Add(new SaturationLayer
+        {
+            Luminance = 1f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertTexturePixels(result, Color.white);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_SignedDistanceFieldLayer_EncodesVerticalThresholdEdge()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(5, 5);
+        var source = CreateVerticalStepTexture(5, 5, 2, Color.black, Color.white);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        recipe.RootStack.Layers.Add(new SignedDistanceFieldLayer
+        {
+            SpreadPixels = 2f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        var pixels = ReadPixels(result);
+        Assert.That(PixelRed(pixels, 5, 1, 2), Is.EqualTo(0.375f).Within(0.04f));
+        Assert.That(PixelRed(pixels, 5, 2, 2), Is.EqualTo(0.625f).Within(0.04f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_SignedDistanceFieldLayer_ThresholdMovesContour()
+    {
+        IgnoreUnsupportedCompute();
+
+        var lowThresholdRecipe = CreateRecipe(5, 5);
+        var highThresholdRecipe = CreateRecipe(5, 5);
+        var source = CreateVerticalStepTexture(5, 5, 2, Color.black, Color.white);
+        lowThresholdRecipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        lowThresholdRecipe.RootStack.Layers.Add(new SignedDistanceFieldLayer
+        {
+            Threshold = 0.25f,
+            SpreadPixels = 2f
+        });
+        highThresholdRecipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        highThresholdRecipe.RootStack.Layers.Add(new SignedDistanceFieldLayer
+        {
+            Threshold = 0.75f,
+            SpreadPixels = 2f
+        });
+
+        var lowThreshold = TextureRecipeEvaluator.Evaluate(lowThresholdRecipe);
+        var highThreshold = TextureRecipeEvaluator.Evaluate(highThresholdRecipe);
+
+        Assert.That(lowThreshold, Is.Not.Null);
+        Assert.That(highThreshold, Is.Not.Null);
+        Assert.That(
+            PixelRed(ReadPixels(lowThreshold), 5, 1, 2),
+            Is.GreaterThan(PixelRed(ReadPixels(highThreshold), 5, 1, 2) + 0.1f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(lowThreshold);
+        Release(highThreshold);
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(lowThresholdRecipe);
+        Object.DestroyImmediate(highThresholdRecipe);
+    }
+
+    [Test]
+    public void Evaluate_SignedDistanceFieldLayer_EdgeValueControlsZeroEncoding()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(5, 5);
+        var source = CreateVerticalStepTexture(5, 5, 2, Color.black, Color.white);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        recipe.RootStack.Layers.Add(new SignedDistanceFieldLayer
+        {
+            SpreadPixels = 1f,
+            EdgeValue = 0.25f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(PixelRed(ReadPixels(result), 5, 2, 2), Is.EqualTo(0.625f).Within(0.04f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_SignedDistanceFieldLayer_UsesSelectedInputChannel()
+    {
+        IgnoreUnsupportedCompute();
+
+        var redRecipe = CreateRecipe(5, 5);
+        var greenRecipe = CreateRecipe(5, 5);
+        var source = CreateVerticalStepTexture(
+            5,
+            5,
+            2,
+            Color.black,
+            new Color(0f, 1f, 0f, 1f));
+        redRecipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        redRecipe.RootStack.Layers.Add(new SignedDistanceFieldLayer
+        {
+            InputUsage = MaskUsage.R,
+            SpreadPixels = 2f
+        });
+        greenRecipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        greenRecipe.RootStack.Layers.Add(new SignedDistanceFieldLayer
+        {
+            InputUsage = MaskUsage.G,
+            SpreadPixels = 2f
+        });
+
+        var red = TextureRecipeEvaluator.Evaluate(redRecipe);
+        var green = TextureRecipeEvaluator.Evaluate(greenRecipe);
+
+        Assert.That(red, Is.Not.Null);
+        Assert.That(green, Is.Not.Null);
+        Assert.That(PixelRed(ReadPixels(red), 5, 2, 2), Is.LessThan(0.02f));
+        Assert.That(PixelRed(ReadPixels(green), 5, 2, 2), Is.GreaterThan(0.5f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(red);
+        Release(green);
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(redRecipe);
+        Object.DestroyImmediate(greenRecipe);
+    }
+
+    [Test]
+    public void Evaluate_SignedDistanceFieldLayer_InvertSignFlipsEncoding()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(5, 5);
+        var source = CreateVerticalStepTexture(5, 5, 2, Color.black, Color.white);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        recipe.RootStack.Layers.Add(new SignedDistanceFieldLayer
+        {
+            SpreadPixels = 2f,
+            InvertSign = true
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(PixelRed(ReadPixels(result), 5, 2, 2), Is.EqualTo(0.375f).Within(0.04f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_SignedDistanceFieldLayer_NoContourSaturatesOutput()
+    {
+        IgnoreUnsupportedCompute();
+
+        var insideRecipe = CreateRecipe();
+        var outsideRecipe = CreateRecipe();
+        insideRecipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = Color.white
+        });
+        insideRecipe.RootStack.Layers.Add(new SignedDistanceFieldLayer());
+        outsideRecipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = Color.black
+        });
+        outsideRecipe.RootStack.Layers.Add(new SignedDistanceFieldLayer());
+
+        var inside = TextureRecipeEvaluator.Evaluate(insideRecipe);
+        var outside = TextureRecipeEvaluator.Evaluate(outsideRecipe);
+
+        Assert.That(inside, Is.Not.Null);
+        Assert.That(outside, Is.Not.Null);
+        AssertTexturePixels(inside, Color.white);
+        AssertTexturePixels(outside, Color.clear);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(inside);
+        Release(outside);
+        Object.DestroyImmediate(insideRecipe);
+        Object.DestroyImmediate(outsideRecipe);
+    }
+
+    [Test]
+    public void Evaluate_SignedDistanceFieldLayer_SpreadPixelsClampsToMax()
+    {
+        IgnoreUnsupportedCompute();
+
+        var cappedRecipe = CreateRecipe(5, 5);
+        var oversizedRecipe = CreateRecipe(5, 5);
+        var source = CreateVerticalStepTexture(5, 5, 2, Color.black, Color.white);
+        cappedRecipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        cappedRecipe.RootStack.Layers.Add(new SignedDistanceFieldLayer
+        {
+            SpreadPixels = SignedDistanceFieldLayer.MaxSpreadPixels
+        });
+        oversizedRecipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        oversizedRecipe.RootStack.Layers.Add(new SignedDistanceFieldLayer
+        {
+            SpreadPixels = SignedDistanceFieldLayer.MaxSpreadPixels + 20f
+        });
+
+        var capped = TextureRecipeEvaluator.Evaluate(cappedRecipe);
+        var oversized = TextureRecipeEvaluator.Evaluate(oversizedRecipe);
+
+        Assert.That(capped, Is.Not.Null);
+        Assert.That(oversized, Is.Not.Null);
+        AssertTexturesEqual(capped, oversized);
+        LogAssert.NoUnexpectedReceived();
+
+        Release(capped);
+        Release(oversized);
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(cappedRecipe);
+        Object.DestroyImmediate(oversizedRecipe);
+    }
+
+    [Test]
     public void Evaluate_NormalFromHeightLayer_ConstantHeightReturnsFlatNormalAndPreservesAlpha()
     {
         IgnoreUnsupportedCompute();
@@ -1265,6 +1711,37 @@ public sealed class TextureRecipeEvaluatorTests
         var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
         recipe.Output.Resolution = new Vector2Int(width, height);
         return recipe;
+    }
+
+    static Texture2D CreateRowTexture(Color[] colors)
+    {
+        var texture = new Texture2D(colors.Length, 1, TextureFormat.RGBA32, false, true)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Repeat
+        };
+
+        for (var x = 0; x < colors.Length; x++)
+            texture.SetPixel(x, 0, colors[x]);
+
+        texture.Apply();
+        return texture;
+    }
+
+    static Texture2D CreateVerticalStepTexture(int width, int height, int insideStartX, Color outside, Color inside)
+    {
+        var texture = new Texture2D(width, height, TextureFormat.RGBA32, false, true)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Repeat
+        };
+
+        for (var y = 0; y < texture.height; y++)
+        for (var x = 0; x < texture.width; x++)
+            texture.SetPixel(x, y, x >= insideStartX ? inside : outside);
+
+        texture.Apply();
+        return texture;
     }
 
     static Texture2D CreateRedImpulseTexture(int width, int height, int impulseX, int impulseY)
