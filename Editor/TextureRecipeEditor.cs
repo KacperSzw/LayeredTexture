@@ -263,7 +263,7 @@ namespace Unmanaged.LayeredTexture.Editor
 
             try
             {
-                previewTexture = TextureRecipeEvaluator.Evaluate(
+                previewTexture = TextureRecipePreviewEvaluator.Evaluate(
                     recipe,
                     TextureRecipeEditorSourceResolver.Instance);
 
