@@ -198,20 +198,6 @@ public sealed class TextureRecipeBakerTests
     }
 
     [Test]
-    public void RelativeTexturePicker_CollectRelativePaths_ReturnsSupportedFilesBelowRoot()
-    {
-        var nestedFolder = System.IO.Path.Combine(externalTestFolder, "Nested");
-        WriteTexturePng(System.IO.Path.Combine(externalTestFolder, "Albedo.png"), Color.white);
-        WriteTextureTga(System.IO.Path.Combine(nestedFolder, "Mask.tga"), new Color32(255, 255, 255, 255));
-        File.WriteAllText(System.IO.Path.Combine(nestedFolder, "Notes.txt"), "ignore");
-
-        var paths = RelativeTexturePickerWindow.CollectRelativePaths(externalTestFolder, null);
-
-        Assert.That(paths, Is.EquivalentTo(new[] { "Albedo.png", "Nested/Mask.tga" }));
-        Assert.That(RelativeTexturePickerWindow.CollectRelativePaths(externalTestFolder, "mask"), Is.EquivalentTo(new[] { "Nested/Mask.tga" }));
-    }
-
-    [Test]
     public void Bake_TextureFileLayerWithMissingRelativeFileSource_SkipsLayer()
     {
         IgnoreUnsupportedCompute();

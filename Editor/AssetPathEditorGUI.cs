@@ -69,22 +69,6 @@ namespace Unmanaged.LayeredTexture.Editor
         static void Pick(SerializedProperty property, AssetPathPickerKind kind, Action changed)
         {
             var mode = (AssetPathMode)property.FindPropertyRelative("Mode").enumValueIndex;
-
-            if (kind == AssetPathPickerKind.TextureFile && mode == AssetPathMode.Relative)
-            {
-                var serializedObject = property.serializedObject;
-                var propertyPath = property.propertyPath;
-                RelativeTexturePickerWindow.Show(relativePath =>
-                {
-                    serializedObject.Update();
-                    var path = serializedObject.FindProperty(propertyPath);
-                    Write(path, AssetPath.Relative(relativePath));
-                    serializedObject.ApplyModifiedProperties();
-                    changed?.Invoke();
-                });
-                return;
-            }
-
             var current = Read(property);
             var selected = kind == AssetPathPickerKind.Folder
                 ? EditorUtility.OpenFolderPanel("Select Folder", StartDirectory(current, kind), string.Empty)

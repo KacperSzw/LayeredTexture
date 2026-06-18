@@ -71,6 +71,26 @@ public sealed class TextureRecipeValidatorTests
     }
 
     [Test]
+    public void AssetPath_TryMakeRelativeInsideRoot_StoresRelativePath()
+    {
+        var root = Path.GetFullPath(Path.Combine(Application.dataPath, "LayeredTexture"));
+        var selected = Path.GetFullPath(Path.Combine(root, "Texture.png"));
+
+        Assert.That(AssetPath.TryMake(selected, root, AssetPathMode.Relative, out var path), Is.True);
+        Assert.That(path.Mode, Is.EqualTo(AssetPathMode.Relative));
+        Assert.That(path.Path, Is.EqualTo("Texture.png"));
+    }
+
+    [Test]
+    public void AssetPath_TryMakeRelativeOutsideRoot_IsInvalid()
+    {
+        var root = Path.GetFullPath(Path.Combine(Application.dataPath, "LayeredTexture"));
+        var selected = Path.GetFullPath(Path.Combine(Application.dataPath, "Other.png"));
+
+        Assert.That(AssetPath.TryMake(selected, root, AssetPathMode.Relative, out _), Is.False);
+    }
+
+    [Test]
     public void AssetPath_RelativeEscapeOutsideRoot_IsInvalid()
     {
         var path = AssetPath.Relative("../Outside");
