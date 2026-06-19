@@ -198,6 +198,122 @@ public sealed class TextureRecipeBakerTests
     }
 
     [Test]
+    public void Bake_TextureFileLayerWithRelativeExternalPsd_UsesGlobalRelativeRoot()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/RelativeExternalPsdTextureFile.png";
+        var sourcePath = System.IO.Path.Combine(externalTestFolder, "Source.psd");
+        var pixels = CornerPixels();
+        WriteTexturePsd(sourcePath, pixels);
+        LayeredTexturePreferences.SetRelativeRoot(externalTestFolder);
+
+        var recipe = CreateRecipe(Path);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RelativeFileSource("Source.psd")
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixels(Path, pixels);
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_TextureFileLayerWithRelativeExternalRlePsd_UsesGlobalRelativeRoot()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/RelativeExternalRlePsdTextureFile.png";
+        var sourcePath = System.IO.Path.Combine(externalTestFolder, "SourceRle.psd");
+        var pixels = CornerPixels();
+        WriteTexturePsd(sourcePath, pixels, 4, PsdCompression.Rle);
+        LayeredTexturePreferences.SetRelativeRoot(externalTestFolder);
+
+        var recipe = CreateRecipe(Path);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RelativeFileSource("SourceRle.psd")
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixels(Path, pixels);
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_TextureFileLayerWithRelativeExternalRgbPsd_DefaultsAlphaToOne()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/RelativeExternalRgbPsdTextureFile.png";
+        var sourcePath = System.IO.Path.Combine(externalTestFolder, "SourceRgb.psd");
+        WriteTexturePsd(sourcePath, CornerPixels(), 3);
+        LayeredTexturePreferences.SetRelativeRoot(externalTestFolder);
+
+        var recipe = CreateRecipe(Path);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RelativeFileSource("SourceRgb.psd")
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixels(Path, OpaqueCornerPixels());
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_TextureFileLayerWithRelativeExternalGrayscalePsd_ExpandsToRgba()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/RelativeExternalGrayscalePsdTextureFile.png";
+        var sourcePath = System.IO.Path.Combine(externalTestFolder, "SourceGray.psd");
+        WriteGrayscalePsd(sourcePath, new byte[] { 0, 85, 170, 255 });
+        LayeredTexturePreferences.SetRelativeRoot(externalTestFolder);
+
+        var recipe = CreateRecipe(Path);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RelativeFileSource("SourceGray.psd")
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixels(Path, new[]
+            {
+                new Color32(0, 0, 0, 255),
+                new Color32(85, 85, 85, 255),
+                new Color32(170, 170, 170, 255),
+                new Color32(255, 255, 255, 255)
+            });
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
     public void Bake_TextureFileLayerWithMissingRelativeFileSource_SkipsLayer()
     {
         IgnoreUnsupportedCompute();
@@ -253,6 +369,38 @@ public sealed class TextureRecipeBakerTests
         {
             Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
             AssertPngPixels(Path, new Color(0.25f, 0.5f, 0.75f, 1f));
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_TextureFileLayerWithCorruptExternalPsd_SkipsLayer()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/CorruptExternalPsdTextureFile.png";
+        var sourcePath = System.IO.Path.Combine(externalTestFolder, "Corrupt.psd");
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(sourcePath));
+        File.WriteAllBytes(sourcePath, new byte[] { 1, 2, 3, 4 });
+        LayeredTexturePreferences.SetRelativeRoot(externalTestFolder);
+
+        var recipe = CreateRecipe(Path);
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.6f, 0.4f, 0.2f, 1f)
+        });
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RelativeFileSource("Corrupt.psd")
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixels(Path, new Color(0.6f, 0.4f, 0.2f, 1f));
         }
         finally
         {
@@ -326,6 +474,70 @@ public sealed class TextureRecipeBakerTests
         {
             Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
             AssertPngPixels(Path, new Color(0.1f, 0.3f, 0.7f, 1f));
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_TextureFileLayerWithAbsoluteExternalPsd_UsesFilePath()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/AbsoluteExternalPsdTextureFile.png";
+        var sourcePath = System.IO.Path.Combine(externalTestFolder, "AbsoluteSource.psd");
+        var color = new Color32(26, 77, 179, 255);
+        WriteTexturePsd(sourcePath, SolidPixels(color));
+
+        var recipe = CreateRecipe(Path);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = new TextureSource
+            {
+                Kind = TextureSourceKind.File,
+                Path = AssetPath.Absolute(sourcePath)
+            }
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixels(Path, (Color)color);
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_TextureFileLayerWithUpdatedExternalPsd_ReloadsChangedFile()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/UpdatedExternalPsdTextureFile.png";
+        var sourcePath = System.IO.Path.Combine(externalTestFolder, "UpdatedSource.psd");
+        LayeredTexturePreferences.SetRelativeRoot(externalTestFolder);
+
+        var recipe = CreateRecipe(Path);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RelativeFileSource("UpdatedSource.psd")
+        });
+
+        try
+        {
+            WriteTexturePsd(sourcePath, SolidPixels(new Color32(26, 77, 179, 255)));
+            File.SetLastWriteTimeUtc(sourcePath, System.DateTime.UtcNow.AddMinutes(-2));
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixels(Path, new Color32(26, 77, 179, 255));
+
+            WriteTexturePsd(sourcePath, SolidPixels(new Color32(204, 51, 102, 255)));
+            File.SetLastWriteTimeUtc(sourcePath, System.DateTime.UtcNow);
+            Assert.That(TextureRecipeBaker.Bake(recipe, out error), Is.True, error);
+            AssertPngPixels(Path, new Color32(204, 51, 102, 255));
         }
         finally
         {
@@ -419,6 +631,180 @@ public sealed class TextureRecipeBakerTests
         File.WriteAllBytes(fullPath, bytes);
     }
 
+    static void WriteTexturePsd(
+        string fullPath,
+        Color32[] pixels,
+        int channels = 4,
+        PsdCompression compression = PsdCompression.Raw)
+    {
+        WritePsd(fullPath, channels, 3, compression, channel => Channel(pixels, channel));
+    }
+
+    static void WriteGrayscalePsd(string fullPath, byte[] values) =>
+        WritePsd(fullPath, 1, 1, PsdCompression.Raw, _ => ValuesInPsdRowOrder(values));
+
+    static void WritePsd(
+        string fullPath,
+        int channels,
+        int colorMode,
+        PsdCompression compression,
+        System.Func<int, byte[]> channelData)
+    {
+        const int Width = 2;
+        const int Height = 2;
+
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(fullPath));
+        using var stream = File.Create(fullPath);
+        using var writer = new BinaryWriter(stream);
+        writer.Write(new byte[] { (byte)'8', (byte)'B', (byte)'P', (byte)'S' });
+        WriteUInt16(writer, 1);
+        writer.Write(new byte[6]);
+        WriteUInt16(writer, channels);
+        WriteUInt32(writer, Height);
+        WriteUInt32(writer, Width);
+        WriteUInt16(writer, 8);
+        WriteUInt16(writer, colorMode);
+        WriteUInt32(writer, 0);
+        WriteUInt32(writer, 0);
+        WriteUInt32(writer, 0);
+        WriteUInt16(writer, (int)compression);
+
+        if (compression == PsdCompression.Rle)
+        {
+            for (var channel = 0; channel < channels; channel++)
+            for (var y = 0; y < Height; y++)
+                WriteUInt16(writer, RleRowLength(channelData(channel), Width, y));
+        }
+
+        for (var channel = 0; channel < channels; channel++)
+        {
+            var data = channelData(channel);
+
+            if (compression == PsdCompression.Rle)
+                WriteRleChannel(writer, data, Width, Height);
+            else
+                writer.Write(data);
+        }
+    }
+
+    static byte[] Channel(Color32[] pixels, int channel)
+    {
+        const int Width = 2;
+        const int Height = 2;
+        var data = new byte[Width * Height];
+        var offset = 0;
+
+        for (var y = Height - 1; y >= 0; y--)
+        for (var x = 0; x < Width; x++)
+            data[offset++] = Component(pixels[y * Width + x], channel);
+
+        return data;
+    }
+
+    static byte[] ValuesInPsdRowOrder(byte[] values)
+    {
+        const int Width = 2;
+        const int Height = 2;
+        var data = new byte[Width * Height];
+        var offset = 0;
+
+        for (var y = Height - 1; y >= 0; y--)
+        for (var x = 0; x < Width; x++)
+            data[offset++] = values[y * Width + x];
+
+        return data;
+    }
+
+    static void WriteUInt16(BinaryWriter writer, int value)
+    {
+        writer.Write((byte)(value >> 8));
+        writer.Write((byte)value);
+    }
+
+    static void WriteUInt32(BinaryWriter writer, int value)
+    {
+        writer.Write((byte)(value >> 24));
+        writer.Write((byte)(value >> 16));
+        writer.Write((byte)(value >> 8));
+        writer.Write((byte)value);
+    }
+
+    static int RleRowLength(byte[] data, int width, int row) =>
+        RowIsRepeating(data, width, row) ? 2 : width + 1;
+
+    static void WriteRleChannel(BinaryWriter writer, byte[] data, int width, int height)
+    {
+        for (var y = 0; y < height; y++)
+        {
+            var offset = y * width;
+
+            if (RowIsRepeating(data, width, y))
+            {
+                writer.Write((byte)(257 - width));
+                writer.Write(data[offset]);
+            }
+            else
+            {
+                writer.Write((byte)(width - 1));
+
+                for (var x = 0; x < width; x++)
+                    writer.Write(data[offset + x]);
+            }
+        }
+    }
+
+    static bool RowIsRepeating(byte[] data, int width, int row)
+    {
+        var offset = row * width;
+
+        for (var x = 1; x < width; x++)
+        {
+            if (data[offset + x] != data[offset])
+                return false;
+        }
+
+        return true;
+    }
+
+    static byte Component(Color32 color, int channel) =>
+        channel switch
+        {
+            0 => color.r,
+            1 => color.g,
+            2 => color.b,
+            _ => color.a
+        };
+
+    static Color32[] CornerPixels() => new[]
+    {
+        new Color32(255, 0, 0, 255),
+        new Color32(0, 255, 0, 255),
+        new Color32(0, 0, 255, 255),
+        new Color32(255, 255, 255, 128)
+    };
+
+    static Color32[] OpaqueCornerPixels() => new[]
+    {
+        new Color32(255, 0, 0, 255),
+        new Color32(0, 255, 0, 255),
+        new Color32(0, 0, 255, 255),
+        new Color32(255, 255, 255, 255)
+    };
+
+    static Color32[] SolidPixels(Color32 color) => new[]
+    {
+        color,
+        color,
+        color,
+        color
+    };
+
+    enum PsdCompression
+    {
+        Raw,
+        Rle
+    }
+
     static void AssertPngPixels(string path, Color expected)
     {
         var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false, true);
@@ -432,6 +818,26 @@ public sealed class TextureRecipeBakerTests
             for (var y = 0; y < texture.height; y++)
             for (var x = 0; x < texture.width; x++)
                 AssertColor(texture.GetPixel(x, y), expected, $"Pixel ({x}, {y})");
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+        }
+    }
+
+    static void AssertPngPixels(string path, Color32[] expected)
+    {
+        var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false, true);
+
+        try
+        {
+            Assert.That(ImageConversion.LoadImage(texture, File.ReadAllBytes(FullPath(path))), Is.True);
+            Assert.That(texture.width, Is.EqualTo(2));
+            Assert.That(texture.height, Is.EqualTo(2));
+
+            for (var y = 0; y < texture.height; y++)
+            for (var x = 0; x < texture.width; x++)
+                AssertColor(texture.GetPixel(x, y), (Color)expected[y * texture.width + x], $"Pixel ({x}, {y})");
         }
         finally
         {

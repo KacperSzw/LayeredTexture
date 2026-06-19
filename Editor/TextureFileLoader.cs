@@ -1,5 +1,9 @@
 using System;
 using System.IO;
+using System.Text;
+using PsdSharp;
+using PsdSharp.Images;
+using PsdSharp.Images.DataConversion;
 using UnityEngine;
 
 namespace Unmanaged.LayeredTexture.Editor
@@ -15,7 +19,8 @@ namespace Unmanaged.LayeredTexture.Editor
             return string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(extension, ".tga", StringComparison.OrdinalIgnoreCase);
+                || string.Equals(extension, ".tga", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(extension, ".psd", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -31,12 +36,19 @@ namespace Unmanaged.LayeredTexture.Editor
             if (!File.Exists(fullPath) || !IsSupportedPath(fullPath))
                 return false;
 
-            var bytes = File.ReadAllBytes(fullPath);
             var extension = Path.GetExtension(fullPath);
 
-            texture = string.Equals(extension, ".tga", StringComparison.OrdinalIgnoreCase)
-                ? LoadTga(bytes)
-                : LoadPngJpg(bytes);
+            if (string.Equals(extension, ".psd", StringComparison.OrdinalIgnoreCase))
+            {
+                texture = LoadPsd(fullPath);
+            }
+            else
+            {
+                var bytes = File.ReadAllBytes(fullPath);
+                texture = string.Equals(extension, ".tga", StringComparison.OrdinalIgnoreCase)
+                    ? LoadTga(bytes)
+                    : LoadPngJpg(bytes);
+            }
 
             if (texture == null)
                 return false;
@@ -55,6 +67,43 @@ namespace Unmanaged.LayeredTexture.Editor
 
             UnityEngine.Object.DestroyImmediate(texture);
             return null;
+        }
+
+        static Texture2D LoadPsd(string fullPath)
+        {
+            try
+            {
+                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+                using var stream = File.Open(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                var psd = PsdFile.Open(stream);
+
+                if (psd.ImageData == null
+                    || psd.Header.WidthInPixels == 0
+                    || psd.Header.HeightInPixels == 0
+                    || psd.Header.WidthInPixels > int.MaxValue
+                    || psd.Header.HeightInPixels > int.MaxValue)
+                    return null;
+
+                var width = (int)psd.Header.WidthInPixels;
+                var height = (int)psd.Header.HeightInPixels;
+                var pixels = PixelDataConverter.GetInterleavedBuffer(psd.ImageData, ColorType.Rgba8888);
+                var expectedLength = (long)width * height * 4;
+
+                if (pixels == null || pixels.Length != expectedLength)
+                    return null;
+
+                FlipRows(pixels, width, height, 4);
+
+                var texture = new Texture2D(width, height, TextureFormat.RGBA32, false, true);
+                texture.LoadRawTextureData(pixels);
+                texture.Apply(false, true);
+                return texture;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         static Texture2D LoadTga(byte[] bytes)
@@ -158,6 +207,23 @@ namespace Unmanaged.LayeredTexture.Editor
                 y = height - 1 - y;
 
             pixels[y * width + x] = color;
+        }
+
+        static void FlipRows(byte[] pixels, int width, int height, int bytesPerPixel)
+        {
+            var rowSize = width * bytesPerPixel;
+            var row = new byte[rowSize];
+            var top = 0;
+            var bottom = (height - 1) * rowSize;
+
+            while (top < bottom)
+            {
+                Buffer.BlockCopy(pixels, top, row, 0, rowSize);
+                Buffer.BlockCopy(pixels, bottom, pixels, top, rowSize);
+                Buffer.BlockCopy(row, 0, pixels, bottom, rowSize);
+                top += rowSize;
+                bottom -= rowSize;
+            }
         }
     }
 }

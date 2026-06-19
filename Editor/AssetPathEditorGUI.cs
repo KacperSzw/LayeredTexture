@@ -162,7 +162,7 @@ namespace Unmanaged.LayeredTexture.Editor
         }
 
         static string Extensions(AssetPathPickerKind kind) =>
-            kind == AssetPathPickerKind.TextureFile ? "png,jpg,jpeg,tga,asset" : string.Empty;
+            kind == AssetPathPickerKind.TextureFile ? "png,jpg,jpeg,tga,psd,asset" : string.Empty;
 
         static string Normalize(string path) =>
             string.IsNullOrWhiteSpace(path) ? null : path.Replace('\\', '/');

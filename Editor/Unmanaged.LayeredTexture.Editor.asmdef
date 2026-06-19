@@ -9,8 +9,13 @@
   ],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
-  "overrideReferences": false,
-  "precompiledReferences": [],
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "PsdSharp.dll",
+    "Iconic.Zlib.Netstandard.dll",
+    "Microsoft.Bcl.Numerics.dll",
+    "System.Text.Encoding.CodePages.dll"
+  ],
   "autoReferenced": true,
   "defineConstraints": [],
   "versionDefines": [],
