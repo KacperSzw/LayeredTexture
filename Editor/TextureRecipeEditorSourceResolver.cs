@@ -43,7 +43,7 @@ namespace Unmanaged.LayeredTexture.Editor
                     return true;
             }
 
-            return TryLoadExternalTexture(fullPath, out texture);
+            return TryLoadExternalTexture(fullPath, source.ColorSpace == TextureSourceColorSpace.SRGB, out texture);
         }
 
         /// <summary>
@@ -108,30 +108,32 @@ namespace Unmanaged.LayeredTexture.Editor
                 : AssetPath.TryMake(assetFullPath, null, mode, out sourcePath);
         }
 
-        bool TryLoadExternalTexture(string fullPath, out Texture texture)
+        bool TryLoadExternalTexture(string fullPath, bool srgb, out Texture texture)
         {
             texture = null;
 
             if (!File.Exists(fullPath) || !TextureFileLoader.IsSupportedPath(fullPath))
                 return false;
 
+            var cacheKey = CacheKey(fullPath, srgb);
             var writeTicks = File.GetLastWriteTimeUtc(fullPath).Ticks;
 
-            if (externalTextures.TryGetValue(fullPath, out var cached)
-                && cached.WriteTicks == writeTicks
-                && cached.Texture != null)
+            if (externalTextures.TryGetValue(cacheKey, out var cached))
             {
-                texture = cached.Texture;
-                return true;
+                if (cached.WriteTicks == writeTicks && cached.Texture != null)
+                {
+                    texture = cached.Texture;
+                    return true;
+                }
+
+                if (cached.Texture != null)
+                    Object.DestroyImmediate(cached.Texture);
             }
 
-            if (cached.Texture != null)
-                Object.DestroyImmediate(cached.Texture);
-
-            if (!TextureFileLoader.TryLoad(fullPath, out var loadedTexture))
+            if (!TextureFileLoader.TryLoad(fullPath, srgb, out var loadedTexture))
                 return false;
 
-            externalTextures[fullPath] = new CachedTexture
+            externalTextures[cacheKey] = new CachedTexture
             {
                 WriteTicks = writeTicks,
                 Texture = loadedTexture
@@ -139,6 +141,8 @@ namespace Unmanaged.LayeredTexture.Editor
             texture = loadedTexture;
             return true;
         }
+
+        static string CacheKey(string fullPath, bool srgb) => $"{fullPath}\n{srgb}";
 
         void ClearExternalTextures()
         {

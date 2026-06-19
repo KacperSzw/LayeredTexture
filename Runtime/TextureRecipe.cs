@@ -17,7 +17,7 @@ namespace Unmanaged.LayeredTexture
         public LayerStack RootStack = new();
 
         /// <summary>
-        /// Output resolution, working format, export format, and import settings.
+        /// Output resolution, file format, and import settings.
         /// </summary>
         public OutputProfile Output = OutputProfile.Default;
     }
@@ -49,7 +49,7 @@ namespace Unmanaged.LayeredTexture
         /// <summary>
         /// RenderTexture format used while evaluating layers.
         /// </summary>
-        public GraphicsFormat WorkingFormat;
+        public const GraphicsFormat WorkingFormat = GraphicsFormat.R16G16B16A16_UNorm;
 
         /// <summary>
         /// Intended final graphics format for the exported/imported texture.
@@ -77,12 +77,11 @@ namespace Unmanaged.LayeredTexture
         public bool SRGB;
 
         /// <summary>
-        /// Default 1024x1024 PNG output using UNorm working and output formats.
+        /// Default 1024x1024 PNG output using UNorm output format.
         /// </summary>
         public static OutputProfile Default => new()
         {
             Resolution = new Vector2Int(1024, 1024),
-            WorkingFormat = GraphicsFormat.R16G16B16A16_UNorm,
             OutputGraphicsFormat = GraphicsFormat.R8G8B8A8_UNorm,
             ExportFormat = ExportFileFormat.PNG,
             GenerateMips = true

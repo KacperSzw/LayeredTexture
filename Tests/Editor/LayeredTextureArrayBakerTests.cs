@@ -37,7 +37,7 @@ public sealed class LayeredTextureArrayBakerTests
         try
         {
             Assert.That(array.Output.Resolution, Is.EqualTo(new Vector2Int(1024, 1024)));
-            Assert.That(array.Output.WorkingFormat, Is.EqualTo(GraphicsFormat.R16G16B16A16_UNorm));
+            Assert.That(OutputProfile.WorkingFormat, Is.EqualTo(GraphicsFormat.R16G16B16A16_UNorm));
             Assert.That(array.Output.OutputFormat, Is.EqualTo(TextureArrayOutputFormat.RGBA32));
             Assert.That(array.Output.CompressionQuality, Is.EqualTo(TextureArrayCompressionQuality.Normal));
             Assert.That(array.Output.GenerateMips, Is.False);

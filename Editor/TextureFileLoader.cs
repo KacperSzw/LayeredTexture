@@ -23,9 +23,10 @@ namespace Unmanaged.LayeredTexture.Editor
         /// Loads a supported image file as a hidden, non-saved Texture2D owned by the caller.
         /// </summary>
         /// <param name="fullPath">Absolute filesystem path to the image file.</param>
+        /// <param name="srgb">Whether RGB should be sampled through sRGB decoding.</param>
         /// <param name="texture">Loaded texture when successful.</param>
         /// <returns>True when the file exists, is supported, and decodes successfully.</returns>
-        internal static bool TryLoad(string fullPath, out Texture2D texture)
+        internal static bool TryLoad(string fullPath, bool srgb, out Texture2D texture)
         {
             texture = null;
 
@@ -36,14 +37,14 @@ namespace Unmanaged.LayeredTexture.Editor
 
             if (string.Equals(extension, ".psd", StringComparison.OrdinalIgnoreCase))
             {
-                texture = LoadPsd(fullPath);
+                texture = LoadPsd(fullPath, srgb);
             }
             else
             {
                 var bytes = File.ReadAllBytes(fullPath);
                 texture = string.Equals(extension, ".tga", StringComparison.OrdinalIgnoreCase)
-                    ? LoadTga(bytes)
-                    : LoadPngJpg(bytes);
+                    ? LoadTga(bytes, srgb)
+                    : LoadPngJpg(bytes, srgb);
             }
 
             if (texture == null)
@@ -54,9 +55,9 @@ namespace Unmanaged.LayeredTexture.Editor
             return true;
         }
 
-        static Texture2D LoadPngJpg(byte[] bytes)
+        static Texture2D LoadPngJpg(byte[] bytes, bool srgb)
         {
-            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false, true);
+            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false, !srgb);
 
             if (ImageConversion.LoadImage(texture, bytes, true))
                 return texture;
@@ -65,7 +66,7 @@ namespace Unmanaged.LayeredTexture.Editor
             return null;
         }
 
-        static Texture2D LoadPsd(string fullPath)
+        static Texture2D LoadPsd(string fullPath, bool srgb)
         {
             try
             {
@@ -109,7 +110,7 @@ namespace Unmanaged.LayeredTexture.Editor
                 var pixels = InterleavePsdPixels(channelData, (int)width, (int)height, colorMode);
                 FlipRows(pixels, (int)width, (int)height, 4);
 
-                var texture = new Texture2D((int)width, (int)height, TextureFormat.RGBA32, false, true);
+                var texture = new Texture2D((int)width, (int)height, TextureFormat.RGBA32, false, !srgb);
                 texture.LoadRawTextureData(pixels);
                 texture.Apply(false, true);
                 return texture;
@@ -265,7 +266,7 @@ namespace Unmanaged.LayeredTexture.Editor
             return (uint)((a << 24) | (b << 16) | (c << 8) | d);
         }
 
-        static Texture2D LoadTga(byte[] bytes)
+        static Texture2D LoadTga(byte[] bytes, bool srgb)
         {
             if (bytes.Length < 18 || bytes[1] != 0)
                 return null;
@@ -329,7 +330,7 @@ namespace Unmanaged.LayeredTexture.Editor
             if (pixelIndex != pixels.Length)
                 return null;
 
-            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false, true);
+            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false, !srgb);
             texture.SetPixels32(pixels);
             texture.Apply(false, true);
             return texture;

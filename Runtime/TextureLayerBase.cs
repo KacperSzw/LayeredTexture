@@ -101,6 +101,11 @@ namespace Unmanaged.LayeredTexture
         public AssetPath Path;
 
         /// <summary>
+        /// How external file bytes should be interpreted before recipe evaluation.
+        /// </summary>
+        public TextureSourceColorSpace ColorSpace;
+
+        /// <summary>
         /// Direct runtime-safe Unity texture reference.
         /// </summary>
         public Texture RuntimeTexture;
@@ -196,6 +201,16 @@ namespace Unmanaged.LayeredTexture
     {
         RuntimeTextureReference,
         File
+    }
+
+    /// <summary>
+    /// External texture file color-space interpretation.
+    /// </summary>
+    public enum TextureSourceColorSpace
+    {
+        Auto,
+        Linear,
+        SRGB
     }
 
     /// <summary>

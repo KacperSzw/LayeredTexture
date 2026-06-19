@@ -173,7 +173,6 @@ namespace Unmanaged.LayeredTexture.Editor
             importer.sRGBTexture = output.SRGB;
             importer.mipmapEnabled = output.GenerateMips;
             importer.alphaIsTransparency = false;
-            importer.textureCompression = TextureImporterCompression.Uncompressed;
             importer.isReadable = false;
             importer.SaveAndReimport();
         }

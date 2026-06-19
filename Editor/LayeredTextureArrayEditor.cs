@@ -47,14 +47,13 @@ namespace Unmanaged.LayeredTexture.Editor
             using (new EditorGUI.IndentLevelScope())
             {
                 EditorGUILayout.PropertyField(output.FindPropertyRelative("Resolution"));
-                EditorGUILayout.PropertyField(output.FindPropertyRelative("WorkingFormat"));
-                EditorGUILayout.PropertyField(output.FindPropertyRelative("OutputFormat"));
+                EditorGUILayout.PropertyField(output.FindPropertyRelative("OutputFormat"), new GUIContent("Array Format"));
 
                 if (IsCompressedOutput())
-                    EditorGUILayout.PropertyField(output.FindPropertyRelative("CompressionQuality"));
+                    EditorGUILayout.PropertyField(output.FindPropertyRelative("CompressionQuality"), new GUIContent("Quality"));
 
-                EditorGUILayout.PropertyField(output.FindPropertyRelative("GenerateMips"));
-                EditorGUILayout.PropertyField(output.FindPropertyRelative("SRGB"));
+                EditorGUILayout.PropertyField(output.FindPropertyRelative("GenerateMips"), new GUIContent("Mip Maps"));
+                EditorGUILayout.PropertyField(output.FindPropertyRelative("SRGB"), new GUIContent("sRGB Color"));
             }
         }
 

@@ -14,7 +14,7 @@ public sealed class TextureRecipeValidatorTests
         var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
 
         Assert.That(recipe.Output.Resolution, Is.EqualTo(new Vector2Int(1024, 1024)));
-        Assert.That(recipe.Output.WorkingFormat, Is.EqualTo(GraphicsFormat.R16G16B16A16_UNorm));
+        Assert.That(OutputProfile.WorkingFormat, Is.EqualTo(GraphicsFormat.R16G16B16A16_UNorm));
         Assert.That(recipe.Output.OutputGraphicsFormat, Is.EqualTo(GraphicsFormat.R8G8B8A8_UNorm));
         Assert.That(recipe.Output.ExportFormat, Is.EqualTo(ExportFileFormat.PNG));
         Assert.That(recipe.Output.TextureType, Is.EqualTo(OutputTextureType.Default));
@@ -30,6 +30,7 @@ public sealed class TextureRecipeValidatorTests
         var textureLayer = new TextureFileLayer();
 
         Assert.That(textureLayer.Source.Kind, Is.EqualTo(TextureSourceKind.RuntimeTextureReference));
+        Assert.That(textureLayer.Source.ColorSpace, Is.EqualTo(TextureSourceColorSpace.Auto));
     }
 
     [Test]
@@ -499,21 +500,6 @@ public sealed class TextureRecipeValidatorTests
 
         Assert.That(TextureRecipeValidator.ValidateRuntime(recipe, out var error), Is.False);
         Assert.That(error, Is.EqualTo("TextureRecipe.Output.Resolution must be positive."));
-        LogAssert.NoUnexpectedReceived();
-
-        Object.DestroyImmediate(recipe);
-    }
-
-    [Test]
-    public void ValidateRuntime_WorkingFormatWithoutComputeWrites_IsInvalid()
-    {
-        IgnoreUnsupportedCompute();
-
-        var recipe = ScriptableObject.CreateInstance<TextureRecipe>();
-        recipe.Output.WorkingFormat = GraphicsFormat.R8G8B8A8_SRGB;
-
-        Assert.That(TextureRecipeValidator.ValidateRuntime(recipe, out var error), Is.False);
-        Assert.That(error, Is.EqualTo("TextureRecipe.Output.WorkingFormat does not support compute writes: R8G8B8A8_SRGB."));
         LogAssert.NoUnexpectedReceived();
 
         Object.DestroyImmediate(recipe);

@@ -121,13 +121,11 @@ namespace Unmanaged.LayeredTexture
             if (output.Resolution.x <= 0 || output.Resolution.y <= 0)
                 return Fail("TextureRecipe.Output.Resolution must be positive.", out error);
 
-            if (output.WorkingFormat == GraphicsFormat.None)
-                return Fail("TextureRecipe.Output.WorkingFormat is invalid.", out error);
-            else if (!SystemInfo.IsFormatSupported(output.WorkingFormat, GraphicsFormatUsage.Render))
-                return Fail($"TextureRecipe.Output.WorkingFormat is not renderable: {output.WorkingFormat}.", out error);
-            else if (!SystemInfo.IsFormatSupported(output.WorkingFormat, GraphicsFormatUsage.LoadStore))
+            if (!SystemInfo.IsFormatSupported(OutputProfile.WorkingFormat, GraphicsFormatUsage.Render))
+                return Fail($"LayeredTexture working format is not renderable: {OutputProfile.WorkingFormat}.", out error);
+            else if (!SystemInfo.IsFormatSupported(OutputProfile.WorkingFormat, GraphicsFormatUsage.LoadStore))
                 return Fail(
-                    $"TextureRecipe.Output.WorkingFormat does not support compute writes: {output.WorkingFormat}.",
+                    $"LayeredTexture working format does not support compute writes: {OutputProfile.WorkingFormat}.",
                     out error);
 
             return true;

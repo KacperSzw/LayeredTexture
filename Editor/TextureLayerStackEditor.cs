@@ -336,7 +336,9 @@ namespace Unmanaged.LayeredTexture.Editor
                     EditorGUI.PropertyField(NextLine(ref rect), layer.FindPropertyRelative("Color"));
                     break;
                 case TextureFileLayer:
-                    DrawTextureSource(NextLine(ref rect), layer.FindPropertyRelative("Source"));
+                    var source = layer.FindPropertyRelative("Source");
+                    DrawTextureSource(NextLine(ref rect), source);
+                    DrawTextureSourceColorSpace(NextLine(ref rect), source);
                     break;
                 case NoiseLayer:
                     DrawNoiseFields(ref rect, layer);
@@ -419,7 +421,7 @@ namespace Unmanaged.LayeredTexture.Editor
             var lines = layer.managedReferenceValue switch
             {
                 SolidColorLayer => 1,
-                TextureFileLayer => 1,
+                TextureFileLayer => 2,
                 NoiseLayer => 5,
                 WarpLayer => 2,
                 BlurLayer => 1,
@@ -734,6 +736,14 @@ namespace Unmanaged.LayeredTexture.Editor
                 AssetPathPickerKind.TextureFile,
                 GUIContent.none,
                 MarkPreviewDirty);
+        }
+
+        static void DrawTextureSourceColorSpace(Rect rect, SerializedProperty source)
+        {
+            var kind = source.FindPropertyRelative("Kind");
+
+            using (new EditorGUI.DisabledScope((TextureSourceKind)kind.enumValueIndex != TextureSourceKind.File))
+                DrawLabeledField(rect, source.FindPropertyRelative("ColorSpace"), "File Color");
         }
 
         void AssignTextureSource(SerializedProperty source, Texture texture)
@@ -1054,6 +1064,7 @@ namespace Unmanaged.LayeredTexture.Editor
         {
             Kind = (TextureSourceKind)source.FindPropertyRelative("Kind").enumValueIndex,
             Path = AssetPathEditorGUI.Read(source.FindPropertyRelative("Path")),
+            ColorSpace = (TextureSourceColorSpace)source.FindPropertyRelative("ColorSpace").enumValueIndex,
             RuntimeTexture = source.FindPropertyRelative("RuntimeTexture").objectReferenceValue as Texture
         };
 

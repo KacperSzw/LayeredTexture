@@ -21,6 +21,11 @@ namespace Unmanaged.LayeredTexture
         public Vector2Int resolution;
 
         /// <summary>
+        /// Whether the final output is intended to be sampled as sRGB color.
+        /// </summary>
+        public bool outputSrgb;
+
+        /// <summary>
         /// Render texture that receives the current layer result.
         /// </summary>
         public RenderTexture current;
@@ -68,13 +73,14 @@ namespace Unmanaged.LayeredTexture
         /// <summary>
         /// Creates working render textures for one recipe evaluation.
         /// </summary>
-        /// <param name="output">Output profile that defines resolution and working format.</param>
+        /// <param name="output">Output profile that defines resolution and import settings.</param>
         /// <param name="recipe">Recipe being evaluated.</param>
         /// <param name="sourceResolver">Optional resolver for non-runtime texture sources.</param>
         public BakeContext(OutputProfile output, TextureRecipe recipe = null, ITextureSourceResolver sourceResolver = null)
         {
-            workingFormat = output.WorkingFormat;
+            workingFormat = OutputProfile.WorkingFormat;
             resolution = output.Resolution;
+            outputSrgb = output.SRGB;
             this.recipe = recipe;
             this.sourceResolver = sourceResolver;
 
@@ -183,7 +189,7 @@ namespace Unmanaged.LayeredTexture
         }
 
         static RenderTexture CreateTexture(string name, OutputProfile output) =>
-            CreateTexture(name, output.Resolution, output.WorkingFormat, output.GenerateMips);
+            CreateTexture(name, output.Resolution, OutputProfile.WorkingFormat, output.GenerateMips);
 
         static RenderTexture CreateTexture(string name, Vector2Int resolution, GraphicsFormat format, bool useMipMap)
         {

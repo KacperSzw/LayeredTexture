@@ -103,21 +103,15 @@ namespace Unmanaged.LayeredTexture.Editor
                 return false;
             }
 
-            if (output.WorkingFormat == GraphicsFormat.None)
+            if (!SystemInfo.IsFormatSupported(OutputProfile.WorkingFormat, GraphicsFormatUsage.Render))
             {
-                error = "LayeredTextureArray.Output.WorkingFormat is invalid.";
+                error = $"LayeredTexture working format is not renderable: {OutputProfile.WorkingFormat}.";
                 return false;
             }
 
-            if (!SystemInfo.IsFormatSupported(output.WorkingFormat, GraphicsFormatUsage.Render))
+            if (!SystemInfo.IsFormatSupported(OutputProfile.WorkingFormat, GraphicsFormatUsage.LoadStore))
             {
-                error = $"LayeredTextureArray.Output.WorkingFormat is not renderable: {output.WorkingFormat}.";
-                return false;
-            }
-
-            if (!SystemInfo.IsFormatSupported(output.WorkingFormat, GraphicsFormatUsage.LoadStore))
-            {
-                error = $"LayeredTextureArray.Output.WorkingFormat does not support compute writes: {output.WorkingFormat}.";
+                error = $"LayeredTexture working format does not support compute writes: {OutputProfile.WorkingFormat}.";
                 return false;
             }
 

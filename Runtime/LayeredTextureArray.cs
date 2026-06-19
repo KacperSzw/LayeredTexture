@@ -34,10 +34,6 @@ namespace Unmanaged.LayeredTexture
         public Vector2Int Resolution;
 
         /// <summary>
-        /// RenderTexture format used while evaluating each page recipe.
-        /// </summary>
-        public GraphicsFormat WorkingFormat;
-
         /// <summary>
         /// Stored Texture2DArray format.
         /// </summary>
@@ -64,7 +60,6 @@ namespace Unmanaged.LayeredTexture
         public static TextureArrayOutputProfile Default => new()
         {
             Resolution = new Vector2Int(1024, 1024),
-            WorkingFormat = GraphicsFormat.R16G16B16A16_UNorm,
             OutputFormat = TextureArrayOutputFormat.RGBA32,
             CompressionQuality = TextureArrayCompressionQuality.Normal
         };
@@ -76,7 +71,6 @@ namespace Unmanaged.LayeredTexture
         public OutputProfile ToRecipeOutput() => new()
         {
             Resolution = Resolution,
-            WorkingFormat = WorkingFormat,
             OutputGraphicsFormat = GraphicsFormat.R8G8B8A8_UNorm,
             ExportFormat = ExportFileFormat.PNG,
             GenerateMips = GenerateMips,

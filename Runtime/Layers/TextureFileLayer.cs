@@ -25,12 +25,25 @@ namespace Unmanaged.LayeredTexture
         {
             LayerCompute.GetKernelOrThrow(LayerCompute.TextureFileKernel, out var shader, out var kernel);
 
-            if (!TextureSourceUtility.TryResolve(ctx.recipe, Source, ctx.sourceResolver, out var texture))
+            var source = ResolveSource(Source, ctx.outputSrgb);
+
+            if (!TextureSourceUtility.TryResolve(ctx.recipe, source, ctx.sourceResolver, out var texture))
                 throw new InvalidOperationException("TextureFileLayer.Source is unresolved.");
 
             LayerCompute.SetCommon(shader, kernel, ctx, Opacity, BlendMode, InputSwizzle, WriteMask);
             shader.SetTexture(kernel, LayerCompute.SourceId, texture);
             LayerCompute.Dispatch(shader, kernel, ctx);
         }
+
+        internal static TextureSource ResolveSource(TextureSource source, bool outputSrgb)
+        {
+            source.ColorSpace = ResolveColorSpace(source.ColorSpace, outputSrgb);
+            return source;
+        }
+
+        static TextureSourceColorSpace ResolveColorSpace(TextureSourceColorSpace colorSpace, bool outputSrgb) =>
+            colorSpace == TextureSourceColorSpace.Auto
+                ? (outputSrgb ? TextureSourceColorSpace.SRGB : TextureSourceColorSpace.Linear)
+                : colorSpace;
     }
 }

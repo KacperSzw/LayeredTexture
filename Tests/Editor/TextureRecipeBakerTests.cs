@@ -56,7 +56,6 @@ public sealed class TextureRecipeBakerTests
             Assert.That(importer.sRGBTexture, Is.True);
             Assert.That(importer.mipmapEnabled, Is.True);
             Assert.That(importer.alphaIsTransparency, Is.False);
-            Assert.That(importer.textureCompression, Is.EqualTo(TextureImporterCompression.Uncompressed));
             Assert.That(importer.isReadable, Is.False);
             AssertPngPixels(Path, GammaRgb(color));
             AssertImportedTextureSamples(Path, color);
@@ -118,6 +117,36 @@ public sealed class TextureRecipeBakerTests
             Assert.That(importer.sRGBTexture, Is.True);
             AssertTgaPixels(Path, GammaRgb(color));
             AssertImportedTextureSamples(Path, color);
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_DoesNotOverwriteImporterCompression()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/PreserveCompression.png";
+        var recipe = CreateRecipe(Path);
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = Color.white
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+
+            var importer = (TextureImporter)AssetImporter.GetAtPath(Path);
+            importer.textureCompression = TextureImporterCompression.Compressed;
+            importer.SaveAndReimport();
+
+            Assert.That(TextureRecipeBaker.Bake(recipe, out error), Is.True, error);
+            importer = (TextureImporter)AssetImporter.GetAtPath(Path);
+            Assert.That(importer.textureCompression, Is.EqualTo(TextureImporterCompression.Compressed));
         }
         finally
         {
@@ -224,6 +253,64 @@ public sealed class TextureRecipeBakerTests
         {
             Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
             AssertPngPixels(Path, new Color(0.2f, 0.6f, 0.8f, 1f));
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_TextureFileLayerWithSrgbOutput_DecodesAutoExternalPngAsSrgb()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/AutoSrgbExternalTextureFile.png";
+        var sourcePath = System.IO.Path.Combine(externalTestFolder, "Source.png");
+        var color = new Color(0.25f, 0.5f, 0.75f, 0.4f);
+        WriteTexturePng(sourcePath, color);
+        LayeredTexturePreferences.SetRelativeRoot(externalTestFolder);
+
+        var recipe = CreateRecipe(Path);
+        recipe.Output.SRGB = true;
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RelativeFileSource("Source.png")
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixels(Path, color);
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_TextureFileLayerWithSrgbOutput_LeavesLinearExternalPngRaw()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/LinearSourceExternalTextureFile.png";
+        var sourcePath = System.IO.Path.Combine(externalTestFolder, "Source.png");
+        var color = new Color(0.25f, 0.5f, 0.75f, 0.4f);
+        WriteTexturePng(sourcePath, color);
+        LayeredTexturePreferences.SetRelativeRoot(externalTestFolder);
+
+        var recipe = CreateRecipe(Path);
+        recipe.Output.SRGB = true;
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RelativeFileSource("Source.png", TextureSourceColorSpace.Linear)
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixels(Path, GammaRgb(color));
         }
         finally
         {
@@ -606,6 +693,35 @@ public sealed class TextureRecipeBakerTests
     }
 
     [Test]
+    public void Bake_TextureFileLayerWithSrgbOutput_DecodesAutoFixturePsdAsSrgb()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/FixturePsdSrgbTextureFile.png";
+        var recipe = CreateRecipe(Path);
+        recipe.Output.Resolution = new Vector2Int(256, 256);
+        recipe.Output.SRGB = true;
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = new TextureSource
+            {
+                Kind = TextureSourceKind.File,
+                Path = AssetPath.Absolute(FullPath(FixturePsdPath))
+            }
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixel(Path, 220, 220, new Color(0.47f, 0.47f, 0.47f, 1f));
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
     public void Bake_TextureFileLayerWithUpdatedExternalPsd_ReloadsChangedFile()
     {
         IgnoreUnsupportedCompute();
@@ -676,10 +792,13 @@ public sealed class TextureRecipeBakerTests
             Object.DestroyImmediate(recipe);
     }
 
-    static TextureSource RelativeFileSource(string relativePath) => new()
+    static TextureSource RelativeFileSource(
+        string relativePath,
+        TextureSourceColorSpace colorSpace = TextureSourceColorSpace.Auto) => new()
     {
         Kind = TextureSourceKind.File,
-        Path = AssetPath.Relative(relativePath)
+        Path = AssetPath.Relative(relativePath),
+        ColorSpace = colorSpace
     };
 
     static void WriteTexturePng(string fullPath, Color color)

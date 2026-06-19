@@ -160,7 +160,7 @@ namespace Unmanaged.LayeredTexture
             {
                 TextureFileLayer textureFileLayer => TextureSourceUtility.TryResolve(
                     ctx.recipe,
-                    textureFileLayer.Source,
+                    TextureFileLayer.ResolveSource(textureFileLayer.Source, ctx.outputSrgb),
                     ctx.sourceResolver,
                     out _),
                 RecipeReferenceLayer recipeReferenceLayer => recipeReferenceLayer.Recipe != null,

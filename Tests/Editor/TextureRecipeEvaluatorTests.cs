@@ -139,10 +139,8 @@ public sealed class TextureRecipeEvaluatorTests
     public void Evaluate_SolidColorLayerOutOfRange_ClampsValuesToZeroOne()
     {
         IgnoreUnsupportedCompute();
-        IgnoreUnsupportedWorkingFormat(GraphicsFormat.R32G32B32A32_SFloat, "Float LayeredTexture working format");
 
         var recipe = CreateRecipe();
-        recipe.Output.WorkingFormat = GraphicsFormat.R32G32B32A32_SFloat;
         recipe.RootStack.Layers.Add(new SolidColorLayer
         {
             Color = new Color(1.5f, -0.25f, 0.5f, 2f)
@@ -151,7 +149,7 @@ public sealed class TextureRecipeEvaluatorTests
         var result = TextureRecipeEvaluator.Evaluate(recipe);
 
         Assert.That(result, Is.Not.Null);
-        AssertTexturePixels(result, new Color(1f, 0f, 0.5f, 1f), TextureFormat.RGBAFloat);
+        AssertTexturePixels(result, new Color(1f, 0f, 0.5f, 1f));
         LogAssert.NoUnexpectedReceived();
 
         Release(result);
