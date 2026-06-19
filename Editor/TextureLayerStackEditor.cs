@@ -381,8 +381,14 @@ namespace Unmanaged.LayeredTexture.Editor
                 case InvertLayer:
                     EditorGUI.LabelField(NextLine(ref rect), "Inverts selected write channels.");
                     break;
+                case SwizzleLayer:
+                    DrawSwizzleFields(ref rect, layer);
+                    break;
                 case HistogramSelectLayer:
                     DrawHistogramSelectFields(ref rect, layer);
+                    break;
+                case ColorSelectLayer:
+                    DrawColorSelectFields(ref rect, layer);
                     break;
                 case SaturationLayer:
                     DrawSaturationFields(ref rect, layer);
@@ -429,7 +435,9 @@ namespace Unmanaged.LayeredTexture.Editor
                 WaterWavesLayer => IsWaterWavesFoam(layer) ? 6 : 5,
                 NormalFromHeightLayer => 1,
                 InvertLayer => 1,
+                SwizzleLayer => 1,
                 HistogramSelectLayer => 2,
+                ColorSelectLayer => 3,
                 SaturationLayer => 2,
                 SignedDistanceFieldLayer => 3,
                 RecipeReferenceLayer => 1,
@@ -537,7 +545,9 @@ namespace Unmanaged.LayeredTexture.Editor
             menu.AddItem(new GUIContent("FX/Warp"), false, () => AddLayer(new WarpLayer()));
             menu.AddItem(new GUIContent("FX/Normal From Height"), false, () => AddLayer(new NormalFromHeightLayer()));
             menu.AddItem(new GUIContent("FX/Invert"), false, () => AddLayer(new InvertLayer()));
+            menu.AddItem(new GUIContent("FX/Swizzle"), false, () => AddLayer(new SwizzleLayer()));
             menu.AddItem(new GUIContent("FX/Histogram Select"), false, () => AddLayer(new HistogramSelectLayer()));
+            menu.AddItem(new GUIContent("FX/Color Select"), false, () => AddLayer(new ColorSelectLayer()));
             menu.AddItem(new GUIContent("FX/Hue/Saturation"), false, () => AddLayer(new SaturationLayer()));
             menu.AddItem(new GUIContent("FX/SDF"), false, () => AddLayer(new SignedDistanceFieldLayer()));
             menu.DropDown(buttonRect);
@@ -929,6 +939,34 @@ namespace Unmanaged.LayeredTexture.Editor
                 "Gradient");
         }
 
+        static void DrawSwizzleFields(ref Rect rect, SerializedProperty layer)
+        {
+            var line = NextLine(ref rect);
+            const float Gap = 8f;
+            var width = (line.width - Gap * 3f) * 0.25f;
+            DrawCompactLabeledField(new Rect(line.x, line.y, width, line.height), layer.FindPropertyRelative("R"), "R");
+            DrawCompactLabeledField(new Rect(line.x + width + Gap, line.y, width, line.height), layer.FindPropertyRelative("G"), "G");
+            DrawCompactLabeledField(new Rect(line.x + (width + Gap) * 2f, line.y, width, line.height), layer.FindPropertyRelative("B"), "B");
+            DrawCompactLabeledField(new Rect(line.x + (width + Gap) * 3f, line.y, width, line.height), layer.FindPropertyRelative("A"), "A");
+        }
+
+        static void DrawColorSelectFields(ref Rect rect, SerializedProperty layer)
+        {
+            EditorGUI.PropertyField(NextLine(ref rect), layer.FindPropertyRelative("TargetColor"));
+            DrawNoiseRow(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("Mode"),
+                "Mode",
+                layer.FindPropertyRelative("Tolerance"),
+                "Tolerance");
+            DrawNoiseRow(
+                NextLine(ref rect),
+                layer.FindPropertyRelative("Softness"),
+                "Softness",
+                layer.FindPropertyRelative("MinimumSaturation"),
+                "Min Sat");
+        }
+
         static void DrawSaturationFields(ref Rect rect, SerializedProperty layer)
         {
             DrawLabeledField(NextLine(ref rect), layer.FindPropertyRelative("HueOffset"), "Hue");
@@ -1083,6 +1121,14 @@ namespace Unmanaged.LayeredTexture.Editor
             EditorGUIUtility.labelWidth = previousWidth;
         }
 
+        static void DrawCompactLabeledField(Rect rect, SerializedProperty property, string label)
+        {
+            var previousWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = 16f;
+            EditorGUI.PropertyField(rect, property, new GUIContent(label));
+            EditorGUIUtility.labelWidth = previousWidth;
+        }
+
         static Rect Inset(Rect rect, float x, float y) =>
             new(rect.x + x, rect.y + y, rect.width - x * 2f, rect.height - y * 2f);
 
@@ -1110,7 +1156,9 @@ namespace Unmanaged.LayeredTexture.Editor
                 WaterWavesLayer => "Water Waves",
                 NormalFromHeightLayer => "Normal From Height",
                 InvertLayer => "Invert",
+                SwizzleLayer => "Swizzle",
                 HistogramSelectLayer => "Histogram Select",
+                ColorSelectLayer => "Color Select",
                 SaturationLayer => "Hue/Saturation",
                 SignedDistanceFieldLayer => "Signed Distance Field",
                 RecipeReferenceLayer => "Recipe Reference",

@@ -8,7 +8,9 @@
 #pragma kernel BlurVertical
 #pragma kernel Transform
 #pragma kernel Invert
+#pragma kernel Swizzle
 #pragma kernel HistogramSelect
+#pragma kernel ColorSelect
 #pragma kernel Saturation
 
 #include "LayeredTextureCommon.hlsl"
@@ -40,7 +42,10 @@ uint _BlurPairCount;
 float4 _BlurPairs[64];
 float4 _TransformSettings;
 float4 _TransformPivotRotation;
+float4 _SwizzleSettings;
 float4 _HistogramSelectSettings;
+float4 _ColorSelectTarget;
+float4 _ColorSelectSettings;
 float4 _SaturationSettings;
 float _Opacity;
 uint _BlendMode;
@@ -408,6 +413,48 @@ float LT_HistogramSelection(float4 sample)
     return 1.0 - smoothstep(halfRange, halfRange + gradient, distanceValue);
 }
 
+float LT_SwizzleLayerChannel(float4 sample, uint source)
+{
+    if (source == 0)
+        return sample.r;
+
+    if (source == 1)
+        return sample.g;
+
+    if (source == 2)
+        return sample.b;
+
+    if (source == 3)
+        return sample.a;
+
+    if (source == 4)
+        return 1.0 - sample.r;
+
+    if (source == 5)
+        return 1.0 - sample.g;
+
+    if (source == 6)
+        return 1.0 - sample.b;
+
+    if (source == 7)
+        return 1.0 - sample.a;
+
+    if (source == 8)
+        return 0.0;
+
+    return 1.0;
+}
+
+float4 LT_SwizzleLayerValue(float4 sample)
+{
+    uint4 sources = (uint4)round(_SwizzleSettings);
+    return float4(
+        LT_SwizzleLayerChannel(sample, sources.x),
+        LT_SwizzleLayerChannel(sample, sources.y),
+        LT_SwizzleLayerChannel(sample, sources.z),
+        LT_SwizzleLayerChannel(sample, sources.w));
+}
+
 float3 LT_RGBToHSL(float3 color)
 {
     float maxValue = max(max(color.r, color.g), color.b);
@@ -485,6 +532,57 @@ float4 LT_AdjustSaturation(float4 sample)
     hsl.y = LT_AdjustUnit(hsl.y, _SaturationSettings.y);
     hsl.z = LT_AdjustUnit(hsl.z, _SaturationSettings.z);
     return float4(LT_HSLToRGB(hsl), sample.a);
+}
+
+float LT_CircularHueDistance(float first, float second)
+{
+    float distanceValue = abs(first - second);
+    return min(distanceValue, 1.0 - distanceValue);
+}
+
+float LT_ColorSelectionFromDistance(float distanceValue)
+{
+    float tolerance = saturate(_ColorSelectSettings.y);
+    float softness = max(_ColorSelectSettings.z, 0.0);
+
+    if (softness <= 0.0001)
+        return distanceValue <= tolerance ? 1.0 : 0.0;
+
+    return 1.0 - smoothstep(tolerance, tolerance + softness, distanceValue);
+}
+
+float LT_ColorSelection(float4 sample)
+{
+    uint mode = (uint)round(_ColorSelectSettings.x);
+    float minimumSaturation = saturate(_ColorSelectSettings.w);
+    float3 sampleRgb = saturate(sample.rgb);
+    float3 targetRgb = saturate(_ColorSelectTarget.rgb);
+
+    if (mode == 0)
+        return LT_ColorSelectionFromDistance(length(sampleRgb - targetRgb) / 1.73205080757);
+
+    float3 sampleHsl = LT_RGBToHSL(sampleRgb);
+    float3 targetHsl = LT_RGBToHSL(targetRgb);
+
+    if (sampleHsl.y < minimumSaturation || targetHsl.y < minimumSaturation)
+        return 0.0;
+
+    float hueDistance = LT_CircularHueDistance(sampleHsl.x, targetHsl.x) * 2.0;
+
+    if (mode == 1)
+        return LT_ColorSelectionFromDistance(hueDistance);
+
+    if (mode == 2)
+    {
+        float2 distanceValue = float2(hueDistance, abs(sampleHsl.y - targetHsl.y));
+        return LT_ColorSelectionFromDistance(length(distanceValue) / 1.41421356237);
+    }
+
+    float3 hslDistance = float3(
+        hueDistance,
+        abs(sampleHsl.y - targetHsl.y),
+        abs(sampleHsl.z - targetHsl.z));
+    return LT_ColorSelectionFromDistance(length(hslDistance) / 1.73205080757);
 }
 
 float LT_HeightAt(int2 pixel, uint2 resolution)
@@ -750,6 +848,52 @@ void HistogramSelect(uint3 id : SV_DispatchThreadID)
     float2 uv = (id.xy + 0.5) / resolution;
     float4 previous = _Previous.Load(pixel);
     float value = LT_HistogramSelection(previous);
+    _Result[id.xy] = LT_ApplyLayer(
+        previous,
+        value.xxxx,
+        LT_LayerMask(uv),
+        _Opacity,
+        _BlendMode,
+        (uint4)_InputSwizzle,
+        _WriteMask,
+        _RawPreview);
+}
+
+[numthreads(8, 8, 1)]
+void Swizzle(uint3 id : SV_DispatchThreadID)
+{
+    uint2 resolution = (uint2)_Resolution.xy;
+
+    if (id.x >= resolution.x || id.y >= resolution.y)
+        return;
+
+    int3 pixel = int3(id.xy, 0);
+    float2 uv = (id.xy + 0.5) / resolution;
+    float4 previous = _Previous.Load(pixel);
+    float4 candidate = LT_SwizzleLayerValue(previous);
+    _Result[id.xy] = LT_ApplyLayer(
+        previous,
+        candidate,
+        LT_LayerMask(uv),
+        _Opacity,
+        _BlendMode,
+        (uint4)_InputSwizzle,
+        _WriteMask,
+        _RawPreview);
+}
+
+[numthreads(8, 8, 1)]
+void ColorSelect(uint3 id : SV_DispatchThreadID)
+{
+    uint2 resolution = (uint2)_Resolution.xy;
+
+    if (id.x >= resolution.x || id.y >= resolution.y)
+        return;
+
+    int3 pixel = int3(id.xy, 0);
+    float2 uv = (id.xy + 0.5) / resolution;
+    float4 previous = _Previous.Load(pixel);
+    float value = LT_ColorSelection(previous);
     _Result[id.xy] = LT_ApplyLayer(
         previous,
         value.xxxx,

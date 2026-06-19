@@ -1271,6 +1271,203 @@ public sealed class TextureRecipeEvaluatorTests
     }
 
     [Test]
+    public void Evaluate_SwizzleLayer_DefaultsPreservePrevious()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe();
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.2f, 0.4f, 0.6f, 0.8f)
+        });
+        recipe.RootStack.Layers.Add(new SwizzleLayer());
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertTexturePixels(result, new Color(0.2f, 0.4f, 0.6f, 0.8f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_SwizzleLayer_MovesInvertsAndWritesConstants()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe();
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.2f, 0.4f, 0.75f, 0.9f)
+        });
+        recipe.RootStack.Layers.Add(new SwizzleLayer
+        {
+            R = SwizzleChannelSource.Zero,
+            G = SwizzleChannelSource.R,
+            B = SwizzleChannelSource.OneMinusB,
+            A = SwizzleChannelSource.One
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertTexturePixels(result, new Color(0f, 0.2f, 0.25f, 1f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_SwizzleLayer_RespectsOpacityAndWriteMask()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe();
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = new Color(0.2f, 0.4f, 0.6f, 0.8f)
+        });
+        recipe.RootStack.Layers.Add(new SwizzleLayer
+        {
+            R = SwizzleChannelSource.One,
+            G = SwizzleChannelSource.One,
+            B = SwizzleChannelSource.One,
+            A = SwizzleChannelSource.One,
+            Opacity = 0.5f,
+            WriteMask = ChannelWriteMask.R | ChannelWriteMask.B
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        AssertTexturePixels(result, new Color(0.6f, 0.4f, 0.8f, 0.8f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_ColorSelectLayer_RgbSelectsNearTarget()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(3, 1);
+        var source = CreateRowTexture(new[]
+        {
+            Color.red,
+            new Color(0.95f, 0.05f, 0.02f, 1f),
+            Color.blue
+        });
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        recipe.RootStack.Layers.Add(new ColorSelectLayer
+        {
+            TargetColor = Color.red,
+            Mode = ColorSelectionMode.RGB,
+            Tolerance = 0.1f,
+            Softness = 0f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        var pixels = ReadPixels(result);
+        AssertColor(pixels[0], Color.white, "Pixel 0");
+        AssertColor(pixels[1], Color.white, "Pixel 1");
+        AssertColor(pixels[2], Color.clear, "Pixel 2");
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_ColorSelectLayer_HueSelectsHueAndIgnoresGray()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(4, 1);
+        var source = CreateRowTexture(new[]
+        {
+            Color.red,
+            new Color(0.5f, 0f, 0f, 1f),
+            new Color(0.5f, 0.5f, 0.5f, 1f),
+            Color.green
+        });
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        recipe.RootStack.Layers.Add(new ColorSelectLayer
+        {
+            TargetColor = Color.red,
+            Mode = ColorSelectionMode.Hue,
+            Tolerance = 0.05f,
+            Softness = 0f,
+            MinimumSaturation = 0.1f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        var pixels = ReadPixels(result);
+        AssertColor(pixels[0], Color.white, "Pixel 0");
+        AssertColor(pixels[1], Color.white, "Pixel 1");
+        AssertColor(pixels[2], Color.clear, "Pixel 2");
+        AssertColor(pixels[3], Color.clear, "Pixel 3");
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void Evaluate_ColorSelectLayer_SoftnessFeathersSelection()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe(3, 1);
+        var source = CreateRowTexture(new[]
+        {
+            Color.black,
+            new Color(0.15f, 0f, 0f, 1f),
+            new Color(0.4f, 0f, 0f, 1f)
+        });
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = RuntimeSource(source)
+        });
+        recipe.RootStack.Layers.Add(new ColorSelectLayer
+        {
+            TargetColor = Color.black,
+            Mode = ColorSelectionMode.RGB,
+            Tolerance = 0.05f,
+            Softness = 0.1f
+        });
+
+        var result = TextureRecipeEvaluator.Evaluate(recipe);
+
+        Assert.That(result, Is.Not.Null);
+        var pixels = ReadPixels(result);
+        Assert.That(pixels[0].r, Is.EqualTo(1f).Within(0.02f));
+        Assert.That(pixels[1].r, Is.GreaterThan(0f).And.LessThan(1f));
+        Assert.That(pixels[2].r, Is.EqualTo(0f).Within(0.02f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
     public void Evaluate_SaturationLayer_HueOffsetRotatesColor()
     {
         IgnoreUnsupportedCompute();

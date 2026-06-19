@@ -209,8 +209,12 @@ namespace Unmanaged.LayeredTexture
                     return LayerCompute.TryGetKernel(LayerCompute.TransformKernel, out _, out _, out error);
                 case InvertLayer:
                     return LayerCompute.TryGetKernel(LayerCompute.InvertKernel, out _, out _, out error);
+                case SwizzleLayer:
+                    return LayerCompute.TryGetKernel(LayerCompute.SwizzleKernel, out _, out _, out error);
                 case HistogramSelectLayer:
                     return LayerCompute.TryGetKernel(LayerCompute.HistogramSelectKernel, out _, out _, out error);
+                case ColorSelectLayer:
+                    return LayerCompute.TryGetKernel(LayerCompute.ColorSelectKernel, out _, out _, out error);
                 case SaturationLayer:
                     return LayerCompute.TryGetKernel(LayerCompute.SaturationKernel, out _, out _, out error);
                 case SignedDistanceFieldLayer:

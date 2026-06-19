@@ -11,8 +11,10 @@ namespace Unmanaged.LayeredTexture.Editor
     {
         const string PackageRoot = "Packages/com.unmanaged.layered-texture";
         const string RecipeScriptPath = PackageRoot + "/Runtime/TextureRecipe.cs";
+        const string SetRecipeScriptPath = PackageRoot + "/Runtime/TextureSetRecipe.cs";
         const string ArrayScriptPath = PackageRoot + "/Runtime/LayeredTextureArray.cs";
         const string RecipeIconPath = PackageRoot + "/Editor/Resources/LayeredTexture/Icons/TextureRecipeIcon.png";
+        const string SetRecipeIconPath = PackageRoot + "/Editor/Resources/LayeredTexture/Icons/TextureSetRecipeIcon.png";
         const string ArrayIconPath = PackageRoot + "/Editor/Resources/LayeredTexture/Icons/LayeredTextureArrayIcon.png";
 
         static LayeredTextureIconInstaller() => EditorApplication.delayCall += ApplyIcons;
@@ -20,6 +22,7 @@ namespace Unmanaged.LayeredTexture.Editor
         static void ApplyIcons()
         {
             SetScriptIcon(RecipeScriptPath, RecipeIconPath);
+            SetScriptIcon(SetRecipeScriptPath, SetRecipeIconPath);
             SetScriptIcon(ArrayScriptPath, ArrayIconPath);
         }
 

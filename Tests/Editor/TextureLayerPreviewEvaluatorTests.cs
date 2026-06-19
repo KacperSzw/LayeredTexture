@@ -24,7 +24,9 @@ public sealed class TextureLayerPreviewEvaluatorTests
         AssertProcessorLayer(new WarpLayer());
         AssertProcessorLayer(new BlurLayer());
         AssertProcessorLayer(new TransformLayer());
+        AssertProcessorLayer(new SwizzleLayer());
         AssertProcessorLayer(new HistogramSelectLayer());
+        AssertProcessorLayer(new ColorSelectLayer());
         AssertProcessorLayer(new SaturationLayer());
         AssertProcessorLayer(new SignedDistanceFieldLayer());
     }
