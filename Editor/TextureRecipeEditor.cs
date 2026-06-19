@@ -16,6 +16,7 @@ namespace Unmanaged.LayeredTexture.Editor
         RenderTexture previewTexture;
         bool previewDirty = true;
         TexturePreviewDisplayMode previewDisplayMode;
+        TexturePreviewColorMode previewColorMode;
         Vector2 editScroll;
         int previewSize;
         string previewError;
@@ -23,6 +24,7 @@ namespace Unmanaged.LayeredTexture.Editor
         MessageType bakeStatusType;
 
         const string PreviewDisplayModeKey = "Unmanaged.LayeredTexture.PreviewDisplayMode";
+        const string PreviewColorModeKey = "Unmanaged.LayeredTexture.PreviewColorMode";
         const string PreviewSizeKey = "Unmanaged.LayeredTexture.PreviewSize";
         const int MinPreviewSize = 80;
         const int MaxPreviewSize = 512;
@@ -46,6 +48,7 @@ namespace Unmanaged.LayeredTexture.Editor
         {
             output = serializedObject.FindProperty("Output");
             previewDisplayMode = LoadPreviewDisplayMode();
+            previewColorMode = LoadPreviewColorMode();
             previewSize = EditorPrefs.GetInt(PreviewSizeKey, 220);
             layerStackEditor = new TextureLayerStackEditor(
                 serializedObject,
@@ -55,6 +58,7 @@ namespace Unmanaged.LayeredTexture.Editor
                     UndoTarget = recipe,
                     PreviewRecipe = recipe,
                     GetOutput = () => recipe.Output,
+                    GetPreviewColorMode = () => previewColorMode,
                     SourceResolver = TextureRecipeEditorSourceResolver.Instance,
                     Changed = MarkPreviewDirty
                 },
@@ -154,11 +158,13 @@ namespace Unmanaged.LayeredTexture.Editor
             {
                 GUILayout.Label("Preview", EditorStyles.boldLabel, GUILayout.Width(58f));
                 GUILayout.FlexibleSpace();
-                DrawPreviewControls();
+                DrawPreviewColorButtons();
 
                 if (GUILayout.Button("Refresh", GUILayout.Width(72f)))
                     MarkPreviewDirty();
             }
+
+            DrawPreviewControls();
 
             if (previewDirty)
                 RebuildPreview();
@@ -171,13 +177,28 @@ namespace Unmanaged.LayeredTexture.Editor
 
             var height = Mathf.Clamp(previewSize, MinPreviewSize, MaxPreviewSize);
             var rect = EditorGUILayout.GetControlRect(false, height);
-            TexturePreviewGUI.Draw(rect, previewTexture, previewDisplayMode);
+            TexturePreviewGUI.Draw(
+                rect,
+                previewTexture,
+                previewDisplayMode,
+                previewColorMode,
+                recipe.Output.SRGB,
+                true);
         }
 
         void DrawPreviewControls()
         {
-            DrawPreviewModeButtons();
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.FlexibleSpace();
+                DrawPreviewModeButtons();
+                GUILayout.Space(6f);
+                DrawPreviewSizeSlider();
+            }
+        }
 
+        void DrawPreviewSizeSlider()
+        {
             EditorGUI.BeginChangeCheck();
             previewSize = EditorGUILayout.IntSlider(
                 previewSize,
@@ -190,6 +211,30 @@ namespace Unmanaged.LayeredTexture.Editor
 
             EditorPrefs.SetInt(PreviewSizeKey, previewSize);
             repaint?.Invoke();
+        }
+
+        void DrawPreviewColorButtons()
+        {
+            DrawPreviewColorButton(TexturePreviewColorMode.Auto, "Auto", 46f, EditorStyles.miniButtonLeft);
+            DrawPreviewColorButton(TexturePreviewColorMode.Values, "Values", 54f, EditorStyles.miniButtonMid);
+            DrawPreviewColorButton(TexturePreviewColorMode.Output, "Output", 56f, EditorStyles.miniButtonRight);
+        }
+
+        void DrawPreviewColorButton(TexturePreviewColorMode mode, string label, float width, GUIStyle style)
+        {
+            var active = previewColorMode == mode;
+            var previousColor = GUI.backgroundColor;
+
+            if (active)
+                GUI.backgroundColor = Color.Lerp(
+                    previousColor,
+                    new Color(0.34f, 0.56f, 0.78f),
+                    EditorGUIUtility.isProSkin ? 0.75f : 0.45f);
+
+            if (GUILayout.Button(label, style, GUILayout.Width(width)))
+                SetPreviewColorMode(mode);
+
+            GUI.backgroundColor = previousColor;
         }
 
         void DrawPreviewModeButtons()
@@ -235,6 +280,13 @@ namespace Unmanaged.LayeredTexture.Editor
         {
             previewDisplayMode = mode;
             EditorPrefs.SetInt(PreviewDisplayModeKey, (int)mode);
+            repaint?.Invoke();
+        }
+
+        void SetPreviewColorMode(TexturePreviewColorMode mode)
+        {
+            previewColorMode = mode;
+            EditorPrefs.SetInt(PreviewColorModeKey, (int)mode);
             repaint?.Invoke();
         }
 
@@ -297,6 +349,15 @@ namespace Unmanaged.LayeredTexture.Editor
             return System.Enum.IsDefined(typeof(TexturePreviewDisplayMode), value)
                 ? (TexturePreviewDisplayMode)value
                 : TexturePreviewDisplayMode.RGBAlpha;
+        }
+
+        static TexturePreviewColorMode LoadPreviewColorMode()
+        {
+            var value = EditorPrefs.GetInt(PreviewColorModeKey, (int)TexturePreviewColorMode.Auto);
+
+            return System.Enum.IsDefined(typeof(TexturePreviewColorMode), value)
+                ? (TexturePreviewColorMode)value
+                : TexturePreviewColorMode.Auto;
         }
     }
 
@@ -435,5 +496,12 @@ namespace Unmanaged.LayeredTexture.Editor
         G = 4,
         B = 5,
         A = 6
+    }
+
+    public enum TexturePreviewColorMode
+    {
+        Auto = 0,
+        Values = 1,
+        Output = 2
     }
 }

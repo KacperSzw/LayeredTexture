@@ -4,6 +4,7 @@ Shader "Hidden/LayeredTexture/PreviewChannel"
     {
         _MainTex ("Texture", 2D) = "white" {}
         _Channel ("Channel", Int) = 0
+        _SrgbDisplay ("sRGB Display", Int) = 0
     }
 
     SubShader
@@ -22,6 +23,7 @@ Shader "Hidden/LayeredTexture/PreviewChannel"
 
             sampler2D _MainTex;
             int _Channel;
+            int _SrgbDisplay;
 
             struct appdata
             {
@@ -48,9 +50,12 @@ Shader "Hidden/LayeredTexture/PreviewChannel"
                 fixed4 color = tex2D(_MainTex, input.uv);
                 float3 display = color.rgb;
 
-                #ifndef UNITY_COLORSPACE_GAMMA
-                display = LinearToGammaSpace(display);
-                #endif
+                if (_SrgbDisplay != 0)
+                {
+                    #ifndef UNITY_COLORSPACE_GAMMA
+                    display = LinearToGammaSpace(display);
+                    #endif
+                }
 
                 if (_Channel == 1)
                     return fixed4(display.rrr, 1.0);

@@ -1,9 +1,5 @@
 using System;
 using System.IO;
-using System.Text;
-using PsdSharp;
-using PsdSharp.Images;
-using PsdSharp.Images.DataConversion;
 using UnityEngine;
 
 namespace Unmanaged.LayeredTexture.Editor
@@ -73,29 +69,47 @@ namespace Unmanaged.LayeredTexture.Editor
         {
             try
             {
-                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-
                 using var stream = File.Open(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                var psd = PsdFile.Open(stream);
+                using var reader = new BinaryReader(stream);
 
-                if (psd.ImageData == null
-                    || psd.Header.WidthInPixels == 0
-                    || psd.Header.HeightInPixels == 0
-                    || psd.Header.WidthInPixels > int.MaxValue
-                    || psd.Header.HeightInPixels > int.MaxValue)
+                if (reader.ReadByte() != '8'
+                    || reader.ReadByte() != 'B'
+                    || reader.ReadByte() != 'P'
+                    || reader.ReadByte() != 'S')
                     return null;
 
-                var width = (int)psd.Header.WidthInPixels;
-                var height = (int)psd.Header.HeightInPixels;
-                var pixels = PixelDataConverter.GetInterleavedBuffer(psd.ImageData, ColorType.Rgba8888);
-                var expectedLength = (long)width * height * 4;
-
-                if (pixels == null || pixels.Length != expectedLength)
+                if (ReadUInt16(reader) != 1)
                     return null;
 
-                FlipRows(pixels, width, height, 4);
+                stream.Position += 6;
+                var channels = ReadUInt16(reader);
+                var height = ReadUInt32(reader);
+                var width = ReadUInt32(reader);
+                var depth = ReadUInt16(reader);
+                var colorMode = ReadUInt16(reader);
 
-                var texture = new Texture2D(width, height, TextureFormat.RGBA32, false, true);
+                if (width == 0
+                    || height == 0
+                    || width > int.MaxValue
+                    || height > int.MaxValue
+                    || depth != 8
+                    || !CanDecodePsdColorMode(colorMode, channels))
+                    return null;
+
+                SkipBlock(reader);
+                SkipBlock(reader);
+                SkipBlock(reader);
+
+                var compression = ReadUInt16(reader);
+                var channelData = ReadPsdChannels(reader, (int)width, (int)height, channels, compression);
+
+                if (channelData == null)
+                    return null;
+
+                var pixels = InterleavePsdPixels(channelData, (int)width, (int)height, colorMode);
+                FlipRows(pixels, (int)width, (int)height, 4);
+
+                var texture = new Texture2D((int)width, (int)height, TextureFormat.RGBA32, false, true);
                 texture.LoadRawTextureData(pixels);
                 texture.Apply(false, true);
                 return texture;
@@ -104,6 +118,151 @@ namespace Unmanaged.LayeredTexture.Editor
             {
                 return null;
             }
+        }
+
+        static bool CanDecodePsdColorMode(int colorMode, int channels) =>
+            colorMode switch
+            {
+                1 => channels is 1 or 2,
+                3 => channels is 3 or 4,
+                _ => false
+            };
+
+        static byte[][] ReadPsdChannels(BinaryReader reader, int width, int height, int channels, int compression)
+        {
+            var pixelCount = width * height;
+            var channelData = new byte[channels][];
+
+            for (var i = 0; i < channels; i++)
+                channelData[i] = new byte[pixelCount];
+
+            switch (compression)
+            {
+                case 0:
+                    for (var channel = 0; channel < channels; channel++)
+                    {
+                        if (reader.Read(channelData[channel], 0, pixelCount) != pixelCount)
+                            return null;
+                    }
+
+                    return channelData;
+                case 1:
+                    return ReadRlePsdChannels(reader, width, height, channelData);
+                default:
+                    return null;
+            }
+        }
+
+        static byte[][] ReadRlePsdChannels(BinaryReader reader, int width, int height, byte[][] channelData)
+        {
+            var rowLengths = new int[channelData.Length * height];
+
+            for (var i = 0; i < rowLengths.Length; i++)
+                rowLengths[i] = ReadUInt16(reader);
+
+            for (var channel = 0; channel < channelData.Length; channel++)
+            {
+                for (var y = 0; y < height; y++)
+                {
+                    var row = ReadPackBitsRow(reader, rowLengths[channel * height + y], width);
+
+                    if (row == null)
+                        return null;
+
+                    Buffer.BlockCopy(row, 0, channelData[channel], y * width, width);
+                }
+            }
+
+            return channelData;
+        }
+
+        static byte[] ReadPackBitsRow(BinaryReader reader, int byteCount, int width)
+        {
+            var end = reader.BaseStream.Position + byteCount;
+            var row = new byte[width];
+            var offset = 0;
+
+            while (reader.BaseStream.Position < end && offset < width)
+            {
+                var header = unchecked((sbyte)reader.ReadByte());
+
+                if (header >= 0)
+                {
+                    var count = header + 1;
+
+                    if (offset + count > width || reader.Read(row, offset, count) != count)
+                        return null;
+
+                    offset += count;
+                    continue;
+                }
+
+                if (header == -128)
+                    continue;
+
+                var repeat = 1 - header;
+
+                if (offset + repeat > width || reader.BaseStream.Position >= end)
+                    return null;
+
+                var value = reader.ReadByte();
+
+                for (var i = 0; i < repeat; i++)
+                    row[offset++] = value;
+            }
+
+            reader.BaseStream.Position = end;
+            return offset == width ? row : null;
+        }
+
+        static byte[] InterleavePsdPixels(byte[][] channelData, int width, int height, int colorMode)
+        {
+            var pixelCount = width * height;
+            var pixels = new byte[pixelCount * 4];
+
+            for (var i = 0; i < pixelCount; i++)
+            {
+                var offset = i * 4;
+
+                if (colorMode == 1)
+                {
+                    var value = channelData[0][i];
+                    pixels[offset] = value;
+                    pixels[offset + 1] = value;
+                    pixels[offset + 2] = value;
+                    pixels[offset + 3] = channelData.Length > 1 ? channelData[1][i] : (byte)255;
+                    continue;
+                }
+
+                pixels[offset] = channelData[0][i];
+                pixels[offset + 1] = channelData[1][i];
+                pixels[offset + 2] = channelData[2][i];
+                pixels[offset + 3] = channelData.Length > 3 ? channelData[3][i] : (byte)255;
+            }
+
+            return pixels;
+        }
+
+        static void SkipBlock(BinaryReader reader)
+        {
+            var length = ReadUInt32(reader);
+            reader.BaseStream.Position += length;
+        }
+
+        static ushort ReadUInt16(BinaryReader reader)
+        {
+            var high = reader.ReadByte();
+            var low = reader.ReadByte();
+            return (ushort)((high << 8) | low);
+        }
+
+        static uint ReadUInt32(BinaryReader reader)
+        {
+            var a = reader.ReadByte();
+            var b = reader.ReadByte();
+            var c = reader.ReadByte();
+            var d = reader.ReadByte();
+            return (uint)((a << 24) | (b << 16) | (c << 8) | d);
         }
 
         static Texture2D LoadTga(byte[] bytes)

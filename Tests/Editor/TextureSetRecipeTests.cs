@@ -41,6 +41,25 @@ public sealed class TextureSetRecipeTests
     }
 
     [Test]
+    public void Bake_SlotsUseOwnSrgbEncoding()
+    {
+        IgnoreUnsupportedCompute();
+
+        var color = new Color(0.25f, 0.5f, 0.75f, 0.4f);
+        var set = CreateSet(TestFolder + "/Mixed.asset");
+        var srgb = SolidSlot("Color", color);
+        var linear = SolidSlot("Mask", color);
+        srgb.Output.SRGB = true;
+        linear.Output.SRGB = false;
+        set.Recipes.Add(srgb);
+        set.Recipes.Add(linear);
+
+        Assert.That(TextureSetRecipeBaker.Bake(set, out var error), Is.True, error);
+        AssertPngPixels(TestFolder + "/Mixed_Color.png", GammaRgb(color));
+        AssertPngPixels(TestFolder + "/Mixed_Mask.png", color);
+    }
+
+    [Test]
     public void Bake_SlotTextureType_AppliesImporterTextureType()
     {
         IgnoreUnsupportedCompute();
@@ -256,6 +275,12 @@ public sealed class TextureSetRecipeTests
             Object.DestroyImmediate(texture);
         }
     }
+
+    static Color GammaRgb(Color color) => new(
+        Mathf.LinearToGammaSpace(color.r),
+        Mathf.LinearToGammaSpace(color.g),
+        Mathf.LinearToGammaSpace(color.b),
+        color.a);
 
     static void AssertPngPixels(string assetPath, Color expected)
     {

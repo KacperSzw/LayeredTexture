@@ -36,7 +36,7 @@ namespace Unmanaged.LayeredTexture.Editor
                     texture = LayeredTextureBakeUtility.ReadBack(
                         renderTexture,
                         TextureRecipeBaker.TextureFormatFor(slot.Slot.Output.ExportFormat));
-                    var bytes = TextureRecipeBaker.Encode(texture, slot.Slot.Output.ExportFormat);
+                    var bytes = TextureRecipeBaker.Encode(texture, slot.Slot.Output);
 
                     if (bytes == null)
                     {

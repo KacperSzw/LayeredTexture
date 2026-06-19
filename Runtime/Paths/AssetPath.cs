@@ -43,6 +43,17 @@ namespace Unmanaged.LayeredTexture
         };
 
         /// <summary>
+        /// Creates a path relative to the Unity project root.
+        /// </summary>
+        /// <param name="path">Path relative to the project root.</param>
+        /// <returns>Project-relative path value.</returns>
+        public static AssetPath Project(string path) => new()
+        {
+            Mode = AssetPathMode.Project,
+            Path = Normalize(path)
+        };
+
+        /// <summary>
         /// Resolves this value to an absolute filesystem path.
         /// </summary>
         /// <param name="relativeRoot">Root used when Mode is Relative.</param>
@@ -59,6 +70,21 @@ namespace Unmanaged.LayeredTexture
 
                 absolutePath = System.IO.Path.GetFullPath(Path);
                 return true;
+            }
+
+            if (Mode == AssetPathMode.Project)
+            {
+                if (System.IO.Path.IsPathRooted(Path ?? string.Empty))
+                    return false;
+
+                var projectRoot = Directory.GetParent(Application.dataPath).FullName;
+                absolutePath = System.IO.Path.GetFullPath(System.IO.Path.Combine(projectRoot, Path ?? string.Empty));
+
+                if (SamePath(absolutePath, projectRoot) || IsInside(absolutePath, projectRoot))
+                    return true;
+
+                absolutePath = null;
+                return false;
             }
 
             if (System.IO.Path.IsPathRooted(Path ?? string.Empty) || string.IsNullOrWhiteSpace(relativeRoot))
@@ -109,6 +135,19 @@ namespace Unmanaged.LayeredTexture
             if (mode == AssetPathMode.Absolute)
             {
                 assetPath = Absolute(fullPath);
+                return true;
+            }
+
+            if (mode == AssetPathMode.Project)
+            {
+                var projectRoot = Directory.GetParent(Application.dataPath).FullName;
+
+                if (!SamePath(fullPath, projectRoot) && !IsInside(fullPath, projectRoot))
+                    return false;
+
+                assetPath = Project(SamePath(fullPath, projectRoot)
+                    ? string.Empty
+                    : fullPath.Substring(RootPrefix(projectRoot).Length));
                 return true;
             }
 
@@ -172,7 +211,8 @@ namespace Unmanaged.LayeredTexture
     public enum AssetPathMode
     {
         Relative,
-        Absolute
+        Absolute,
+        Project
     }
 
     public sealed class AssetPathPickerAttribute : PropertyAttribute

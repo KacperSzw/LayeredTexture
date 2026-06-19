@@ -16,42 +16,63 @@ namespace Unmanaged.LayeredTexture.Editor
 
         static TexturePreviewGUI() => AssemblyReloadEvents.beforeAssemblyReload += ReleaseMaterial;
 
-        internal static void Draw(Rect rect, Texture texture) => DrawRgbAlpha(rect, texture, true);
+        internal static void Draw(Rect rect, Texture texture) =>
+            DrawRgbAlpha(rect, texture, true, false);
 
-        internal static void Draw(Rect rect, Texture texture, TexturePreviewDisplayMode mode)
+        internal static void Draw(Rect rect, Texture texture, TexturePreviewDisplayMode mode) =>
+            Draw(rect, texture, mode, TexturePreviewColorMode.Values, false, false);
+
+        internal static void Draw(
+            Rect rect,
+            Texture texture,
+            TexturePreviewDisplayMode mode,
+            TexturePreviewColorMode colorMode,
+            bool outputSrgb,
+            bool autoUsesOutput)
         {
+            var srgbDisplay = ShouldDisplaySrgb(colorMode, outputSrgb, autoUsesOutput);
+
             switch (mode)
             {
                 case TexturePreviewDisplayMode.RGB:
-                    DrawChannels(rect, texture, true, 0);
+                    DrawChannels(rect, texture, true, srgbDisplay, 0);
                     break;
                 case TexturePreviewDisplayMode.RGBAChannels:
-                    DrawChannels(rect, texture, true, 1, 2, 3, 4);
+                    DrawChannels(rect, texture, true, srgbDisplay, 1, 2, 3, 4);
                     break;
                 case TexturePreviewDisplayMode.R:
-                    DrawChannels(rect, texture, true, 1);
+                    DrawChannels(rect, texture, true, srgbDisplay, 1);
                     break;
                 case TexturePreviewDisplayMode.G:
-                    DrawChannels(rect, texture, true, 2);
+                    DrawChannels(rect, texture, true, srgbDisplay, 2);
                     break;
                 case TexturePreviewDisplayMode.B:
-                    DrawChannels(rect, texture, true, 3);
+                    DrawChannels(rect, texture, true, srgbDisplay, 3);
                     break;
                 case TexturePreviewDisplayMode.A:
-                    DrawChannels(rect, texture, true, 4);
+                    DrawChannels(rect, texture, true, srgbDisplay, 4);
                     break;
                 default:
-                    DrawRgbAlpha(rect, texture, true);
+                    DrawRgbAlpha(rect, texture, true, srgbDisplay);
                     break;
             }
         }
 
-        internal static void DrawCompact(Rect rect, Texture texture) => DrawRgbAlpha(rect, texture, false);
+        internal static void DrawCompact(Rect rect, Texture texture) =>
+            DrawRgbAlpha(rect, texture, false, false);
 
-        static void DrawRgbAlpha(Rect rect, Texture texture, bool frame) =>
-            DrawChannels(rect, texture, frame, 0, 4);
+        internal static void DrawCompact(
+            Rect rect,
+            Texture texture,
+            TexturePreviewColorMode colorMode,
+            bool outputSrgb,
+            bool autoUsesOutput) =>
+            DrawRgbAlpha(rect, texture, false, ShouldDisplaySrgb(colorMode, outputSrgb, autoUsesOutput));
 
-        static void DrawChannels(Rect rect, Texture texture, bool frame, params int[] channels)
+        static void DrawRgbAlpha(Rect rect, Texture texture, bool frame, bool srgbDisplay) =>
+            DrawChannels(rect, texture, frame, srgbDisplay, 0, 4);
+
+        static void DrawChannels(Rect rect, Texture texture, bool frame, bool srgbDisplay, params int[] channels)
         {
             if (frame)
                 GUI.Box(rect, GUIContent.none, EditorStyles.helpBox);
@@ -74,18 +95,26 @@ namespace Unmanaged.LayeredTexture.Editor
             var y = innerRect.y + (innerRect.height - size) * 0.5f;
 
             for (var i = 0; i < count; i++)
-                DrawTexture(new Rect(x + (size + Gap) * i, y, size, size), texture, channels[i]);
+                DrawTexture(new Rect(x + (size + Gap) * i, y, size, size), texture, channels[i], srgbDisplay);
         }
 
-        static void DrawTexture(Rect rect, Texture texture, int channel)
+        static void DrawTexture(Rect rect, Texture texture, int channel, bool srgbDisplay)
         {
             var material = GetMaterial();
 
             if (material != null)
+            {
                 material.SetInt("_Channel", channel);
+                material.SetInt("_SrgbDisplay", srgbDisplay ? 1 : 0);
+            }
 
             EditorGUI.DrawPreviewTexture(rect, texture, material, ScaleMode.ScaleToFit);
         }
+
+        static bool ShouldDisplaySrgb(TexturePreviewColorMode colorMode, bool outputSrgb, bool autoUsesOutput) =>
+            outputSrgb
+            && (colorMode == TexturePreviewColorMode.Output
+                || colorMode == TexturePreviewColorMode.Auto && autoUsesOutput);
 
         static Material GetMaterial()
         {

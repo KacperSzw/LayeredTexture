@@ -27,6 +27,11 @@ namespace Unmanaged.LayeredTexture.Editor
         public Func<OutputProfile> GetOutput;
 
         /// <summary>
+        /// Preview color mode provider used for raw layer previews.
+        /// </summary>
+        public Func<TexturePreviewColorMode> GetPreviewColorMode;
+
+        /// <summary>
         /// Texture resolver used for file-backed texture sources.
         /// </summary>
         public ITextureSourceResolver SourceResolver;
@@ -659,10 +664,13 @@ namespace Unmanaged.LayeredTexture.Editor
                 return;
             }
 
+            var output = Output;
+            var colorMode = PreviewColorMode;
+
             if (compact)
-                TexturePreviewGUI.DrawCompact(rect, preview);
+                TexturePreviewGUI.DrawCompact(rect, preview, colorMode, output.SRGB, false);
             else
-                TexturePreviewGUI.Draw(rect, preview);
+                TexturePreviewGUI.Draw(rect, preview, TexturePreviewDisplayMode.RGBAlpha, colorMode, output.SRGB, false);
         }
 
         void DrawClippedLayerPreview(Rect rect, Texture preview, bool compact)
@@ -672,10 +680,13 @@ namespace Unmanaged.LayeredTexture.Editor
             if (!ContainsVertically(layerPreviewScreenClipRect, screenRect))
                 return;
 
+            var output = Output;
+            var colorMode = PreviewColorMode;
+
             if (compact)
-                TexturePreviewGUI.DrawCompact(rect, preview);
+                TexturePreviewGUI.DrawCompact(rect, preview, colorMode, output.SRGB, false);
             else
-                TexturePreviewGUI.Draw(rect, preview);
+                TexturePreviewGUI.Draw(rect, preview, TexturePreviewDisplayMode.RGBAlpha, colorMode, output.SRGB, false);
         }
 
         RenderTexture GetLayerPreview(int index, TextureLayerBase layer)
@@ -683,15 +694,10 @@ namespace Unmanaged.LayeredTexture.Editor
             if (layerPreviews.TryGetValue(index, out var preview))
                 return preview;
 
-            var output = context.GetOutput != null
-                ? context.GetOutput()
-                : context.PreviewRecipe != null
-                    ? context.PreviewRecipe.Output
-                    : default;
             preview = TextureLayerPreviewEvaluator.EvaluateRaw(
                 context.PreviewRecipe,
                 layer,
-                output,
+                Output,
                 SourceResolver);
             layerPreviews[index] = preview;
             return preview;
@@ -752,6 +758,10 @@ namespace Unmanaged.LayeredTexture.Editor
                         assetPath,
                         AssetPathMode.Relative,
                         out var sourcePath)
+                    || TextureRecipeEditorSourceResolver.TryMakeSourcePath(
+                        assetPath,
+                        AssetPathMode.Project,
+                        out sourcePath)
                     || TextureRecipeEditorSourceResolver.TryMakeSourcePath(
                         assetPath,
                         AssetPathMode.Absolute,
@@ -1099,6 +1109,18 @@ namespace Unmanaged.LayeredTexture.Editor
 
         ITextureSourceResolver SourceResolver =>
             context.SourceResolver ?? TextureRecipeEditorSourceResolver.Instance;
+
+        OutputProfile Output =>
+            context.GetOutput != null
+                ? context.GetOutput()
+                : context.PreviewRecipe != null
+                    ? context.PreviewRecipe.Output
+                    : default;
+
+        TexturePreviewColorMode PreviewColorMode =>
+            context.GetPreviewColorMode != null
+                ? context.GetPreviewColorMode()
+                : TexturePreviewColorMode.Auto;
 
         string HeaderLabel =>
             string.IsNullOrEmpty(context.HeaderLabel) ? "Layers" : context.HeaderLabel;

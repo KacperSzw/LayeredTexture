@@ -9,6 +9,7 @@ using static LayeredTextureTestUtility;
 public sealed class TextureRecipeBakerTests
 {
     const string TestFolder = "Assets/LayeredTextureBakerTests";
+    const string FixturePsdPath = "Packages/com.unmanaged.layered-texture/Tests/Editor/Resource/LayeredTex_TestPSD.psd";
     readonly string externalTestFolder = Path.Combine(Path.GetTempPath(), "LayeredTextureBakerTests");
     string previousRelativeRoot;
 
@@ -35,12 +36,13 @@ public sealed class TextureRecipeBakerTests
         IgnoreUnsupportedCompute();
 
         const string Path = TestFolder + "/Solid.png";
+        var color = new Color(0.25f, 0.5f, 0.75f, 0.4f);
         var recipe = CreateRecipe(Path);
         recipe.Output.SRGB = true;
         recipe.Output.GenerateMips = true;
         recipe.RootStack.Layers.Add(new SolidColorLayer
         {
-            Color = new Color(0.25f, 0.5f, 0.75f, 1f)
+            Color = color
         });
 
         try
@@ -56,7 +58,66 @@ public sealed class TextureRecipeBakerTests
             Assert.That(importer.alphaIsTransparency, Is.False);
             Assert.That(importer.textureCompression, Is.EqualTo(TextureImporterCompression.Uncompressed));
             Assert.That(importer.isReadable, Is.False);
-            AssertPngPixels(Path, new Color(0.25f, 0.5f, 0.75f, 1f));
+            AssertPngPixels(Path, GammaRgb(color));
+            AssertImportedTextureSamples(Path, color);
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_SolidColorPngWithSrgbDisabled_WritesLinearRgb()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/SolidLinear.png";
+        var color = new Color(0.25f, 0.5f, 0.75f, 0.4f);
+        var recipe = CreateRecipe(Path);
+        recipe.Output.SRGB = false;
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = color
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+
+            var importer = (TextureImporter)AssetImporter.GetAtPath(Path);
+            Assert.That(importer.sRGBTexture, Is.False);
+            AssertPngPixels(Path, color);
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
+    public void Bake_SolidColorTgaWithSrgbEnabled_WritesGammaEncodedRgb()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/SolidTga.tga";
+        var color = new Color(0.25f, 0.5f, 0.75f, 0.4f);
+        var recipe = CreateRecipe(Path);
+        recipe.Output.ExportFormat = ExportFileFormat.TGA;
+        recipe.Output.SRGB = true;
+        recipe.RootStack.Layers.Add(new SolidColorLayer
+        {
+            Color = color
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+
+            var importer = (TextureImporter)AssetImporter.GetAtPath(Path);
+            Assert.That(importer.sRGBTexture, Is.True);
+            AssertTgaPixels(Path, GammaRgb(color));
+            AssertImportedTextureSamples(Path, color);
         }
         finally
         {
@@ -513,6 +574,38 @@ public sealed class TextureRecipeBakerTests
     }
 
     [Test]
+    public void Bake_TextureFileLayerWithFixturePsd_DecodesCompositeRleImage()
+    {
+        IgnoreUnsupportedCompute();
+
+        const string Path = TestFolder + "/FixturePsdTextureFile.png";
+        var recipe = CreateRecipe(Path);
+        recipe.Output.Resolution = new Vector2Int(256, 256);
+        recipe.RootStack.Layers.Add(new TextureFileLayer
+        {
+            Source = new TextureSource
+            {
+                Kind = TextureSourceKind.File,
+                Path = AssetPath.Absolute(FullPath(FixturePsdPath))
+            }
+        });
+
+        try
+        {
+            Assert.That(TextureRecipeBaker.Bake(recipe, out var error), Is.True, error);
+            AssertPngPixel(Path, 20, 235, Color.white);
+            AssertPngPixel(Path, 220, 220, new Color(0.47f, 0.47f, 0.47f, 1f));
+            AssertPngPixel(Path, 64, 192, Color.red);
+            AssertPngPixel(Path, 190, 128, new Color(0f, 1f, 0.03f, 1f));
+            AssertPngPixel(Path, 80, 64, Color.blue);
+        }
+        finally
+        {
+            DestroyRecipe(recipe);
+        }
+    }
+
+    [Test]
     public void Bake_TextureFileLayerWithUpdatedExternalPsd_ReloadsChangedFile()
     {
         IgnoreUnsupportedCompute();
@@ -799,10 +892,40 @@ public sealed class TextureRecipeBakerTests
         color
     };
 
+    static Color GammaRgb(Color color) => new(
+        Mathf.LinearToGammaSpace(color.r),
+        Mathf.LinearToGammaSpace(color.g),
+        Mathf.LinearToGammaSpace(color.b),
+        color.a);
+
     enum PsdCompression
     {
         Raw,
         Rle
+    }
+
+    static void AssertImportedTextureSamples(string path, Color expected)
+    {
+        var imported = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        Assert.That(imported, Is.Not.Null);
+
+        var renderTexture = new RenderTexture(2, 2, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
+
+        try
+        {
+            renderTexture.Create();
+            Graphics.Blit(imported, renderTexture);
+
+            var pixels = ReadPixels(renderTexture);
+
+            for (var i = 0; i < pixels.Length; i++)
+                AssertColor(pixels[i], expected, $"Imported pixel {i}");
+        }
+        finally
+        {
+            renderTexture.Release();
+            Object.DestroyImmediate(renderTexture);
+        }
     }
 
     static void AssertPngPixels(string path, Color expected)
@@ -842,6 +965,45 @@ public sealed class TextureRecipeBakerTests
         finally
         {
             Object.DestroyImmediate(texture);
+        }
+    }
+
+    static void AssertPngPixel(string path, int x, int y, Color expected)
+    {
+        var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false, true);
+
+        try
+        {
+            Assert.That(ImageConversion.LoadImage(texture, File.ReadAllBytes(FullPath(path))), Is.True);
+            AssertColor(texture.GetPixel(x, y), expected, $"Pixel ({x}, {y})");
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+        }
+    }
+
+    static void AssertTgaPixels(string path, Color expected)
+    {
+        var bytes = File.ReadAllBytes(FullPath(path));
+        Assert.That(bytes, Has.Length.GreaterThanOrEqualTo(34));
+        Assert.That(bytes[2], Is.EqualTo(2));
+        Assert.That(bytes[12] | (bytes[13] << 8), Is.EqualTo(2));
+        Assert.That(bytes[14] | (bytes[15] << 8), Is.EqualTo(2));
+        Assert.That(bytes[16], Is.EqualTo(32));
+
+        var expected32 = (Color32)expected;
+        var offset = 18;
+
+        for (var i = 0; i < 4; i++)
+        {
+            var actual = new Color32(
+                bytes[offset + 2],
+                bytes[offset + 1],
+                bytes[offset],
+                bytes[offset + 3]);
+            AssertColor((Color)actual, (Color)expected32, $"TGA pixel {i}");
+            offset += 4;
         }
     }
 

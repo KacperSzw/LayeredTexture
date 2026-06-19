@@ -43,7 +43,7 @@ namespace Unmanaged.LayeredTexture.Editor
                 }
 
                 texture = LayeredTextureBakeUtility.ReadBack(renderTexture, TextureFormatFor(recipe.Output.ExportFormat));
-                var bytes = Encode(texture, recipe.Output.ExportFormat);
+                var bytes = Encode(texture, recipe.Output);
                 Directory.CreateDirectory(Path.GetDirectoryName(fullPath));
                 File.WriteAllBytes(fullPath, bytes);
                 AssetDatabase.Refresh();
@@ -115,7 +115,24 @@ namespace Unmanaged.LayeredTexture.Editor
         internal static TextureFormat TextureFormatFor(ExportFileFormat format) =>
             format == ExportFileFormat.EXR ? TextureFormat.RGBAFloat : TextureFormat.RGBA32;
 
-        internal static byte[] Encode(Texture2D texture, ExportFileFormat format) =>
+        internal static byte[] Encode(Texture2D texture, OutputProfile output)
+        {
+            if (!ShouldEncodeSrgb(output))
+                return Encode(texture, output.ExportFormat);
+
+            var srgbTexture = EncodeRgbAsSrgb(texture);
+
+            try
+            {
+                return Encode(srgbTexture, output.ExportFormat);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(srgbTexture);
+            }
+        }
+
+        static byte[] Encode(Texture2D texture, ExportFileFormat format) =>
             format switch
             {
                 ExportFileFormat.PNG => ImageConversion.EncodeToPNG(texture),
@@ -123,6 +140,29 @@ namespace Unmanaged.LayeredTexture.Editor
                 ExportFileFormat.EXR => ImageConversion.EncodeToEXR(texture, Texture2D.EXRFlags.OutputAsFloat),
                 _ => null
             };
+
+        static bool ShouldEncodeSrgb(OutputProfile output) =>
+            output.SRGB
+            && output.ExportFormat is ExportFileFormat.PNG or ExportFileFormat.TGA;
+
+        static Texture2D EncodeRgbAsSrgb(Texture2D texture)
+        {
+            var pixels = texture.GetPixels();
+
+            for (var i = 0; i < pixels.Length; i++)
+            {
+                var pixel = pixels[i];
+                pixel.r = Mathf.LinearToGammaSpace(pixel.r);
+                pixel.g = Mathf.LinearToGammaSpace(pixel.g);
+                pixel.b = Mathf.LinearToGammaSpace(pixel.b);
+                pixels[i] = pixel;
+            }
+
+            var srgbTexture = new Texture2D(texture.width, texture.height, TextureFormat.RGBA32, false, true);
+            srgbTexture.SetPixels(pixels);
+            srgbTexture.Apply(false, false);
+            return srgbTexture;
+        }
 
         internal static void ApplyImporter(string assetPath, OutputProfile output)
         {
