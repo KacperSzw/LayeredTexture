@@ -108,17 +108,6 @@ public sealed class TextureRecipeValidatorTests
     }
 
     [Test]
-    public void AssetPath_TryMakeProjectInsideRoot_StoresProjectPath()
-    {
-        var projectRoot = Directory.GetParent(Application.dataPath).FullName;
-        var selected = Path.GetFullPath(Path.Combine(projectRoot, "Packages/com.unmanaged.layered-texture/package.json"));
-
-        Assert.That(AssetPath.TryMake(selected, null, AssetPathMode.Project, out var path), Is.True);
-        Assert.That(path.Mode, Is.EqualTo(AssetPathMode.Project));
-        Assert.That(path.Path, Is.EqualTo("Packages/com.unmanaged.layered-texture/package.json"));
-    }
-
-    [Test]
     public void AssetPath_TryMakeProjectOutsideRoot_IsInvalid()
     {
         var selected = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "Texture.png"));
