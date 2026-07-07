@@ -96,10 +96,10 @@ public sealed class TextureLayerPreviewEvaluatorTests
             Source = RuntimeSource(source),
             InputSwizzle = new ChannelSwizzle
             {
-                R = TextureChannel.B,
-                G = TextureChannel.G,
-                B = TextureChannel.R,
-                A = TextureChannel.A
+                R = SwizzleChannelSource.B,
+                G = SwizzleChannelSource.G,
+                B = SwizzleChannelSource.R,
+                A = SwizzleChannelSource.A
             },
             Opacity = 0f,
             WriteMask = ChannelWriteMask.R
@@ -109,6 +109,36 @@ public sealed class TextureLayerPreviewEvaluatorTests
 
         Assert.That(result, Is.Not.Null);
         AssertTexturePixels(result, new Color(0.8f, 0.4f, 0.2f, 1f));
+        LogAssert.NoUnexpectedReceived();
+
+        Release(result);
+        Object.DestroyImmediate(source);
+        Object.DestroyImmediate(recipe);
+    }
+
+    [Test]
+    public void EvaluateRaw_TextureFile_AppliesFullInputSwizzle()
+    {
+        IgnoreUnsupportedCompute();
+
+        var recipe = CreateRecipe();
+        var source = CreateTexture(new Color(0.2f, 0.4f, 0.8f, 1f));
+        var layer = new TextureFileLayer
+        {
+            Source = RuntimeSource(source),
+            InputSwizzle = new ChannelSwizzle
+            {
+                R = SwizzleChannelSource.Zero,
+                G = SwizzleChannelSource.OneMinusR,
+                B = SwizzleChannelSource.OneMinusB,
+                A = SwizzleChannelSource.One
+            }
+        };
+
+        var result = TextureLayerPreviewEvaluator.EvaluateRaw(recipe, layer);
+
+        Assert.That(result, Is.Not.Null);
+        AssertTexturePixels(result, new Color(0f, 0.8f, 0.2f, 1f));
         LogAssert.NoUnexpectedReceived();
 
         Release(result);

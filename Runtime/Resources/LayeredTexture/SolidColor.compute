@@ -413,46 +413,9 @@ float LT_HistogramSelection(float4 sample)
     return 1.0 - smoothstep(halfRange, halfRange + gradient, distanceValue);
 }
 
-float LT_SwizzleLayerChannel(float4 sample, uint source)
-{
-    if (source == 0)
-        return sample.r;
-
-    if (source == 1)
-        return sample.g;
-
-    if (source == 2)
-        return sample.b;
-
-    if (source == 3)
-        return sample.a;
-
-    if (source == 4)
-        return 1.0 - sample.r;
-
-    if (source == 5)
-        return 1.0 - sample.g;
-
-    if (source == 6)
-        return 1.0 - sample.b;
-
-    if (source == 7)
-        return 1.0 - sample.a;
-
-    if (source == 8)
-        return 0.0;
-
-    return 1.0;
-}
-
 float4 LT_SwizzleLayerValue(float4 sample)
 {
-    uint4 sources = (uint4)round(_SwizzleSettings);
-    return float4(
-        LT_SwizzleLayerChannel(sample, sources.x),
-        LT_SwizzleLayerChannel(sample, sources.y),
-        LT_SwizzleLayerChannel(sample, sources.z),
-        LT_SwizzleLayerChannel(sample, sources.w));
+    return LT_Swizzle(sample, (uint4)round(_SwizzleSettings));
 }
 
 float3 LT_RGBToHSL(float3 color)

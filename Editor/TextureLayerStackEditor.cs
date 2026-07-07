@@ -339,6 +339,7 @@ namespace Unmanaged.LayeredTexture.Editor
                     var source = layer.FindPropertyRelative("Source");
                     DrawTextureSource(NextLine(ref rect), source);
                     DrawTextureSourceColorSpace(NextLine(ref rect), source);
+                    DrawSwizzleFields(NextLine(ref rect), layer.FindPropertyRelative("InputSwizzle"));
                     break;
                 case NoiseLayer:
                     DrawNoiseFields(ref rect, layer);
@@ -427,7 +428,7 @@ namespace Unmanaged.LayeredTexture.Editor
             var lines = layer.managedReferenceValue switch
             {
                 SolidColorLayer => 1,
-                TextureFileLayer => 2,
+                TextureFileLayer => 3,
                 NoiseLayer => 5,
                 WarpLayer => 2,
                 BlurLayer => 1,
@@ -941,7 +942,11 @@ namespace Unmanaged.LayeredTexture.Editor
 
         static void DrawSwizzleFields(ref Rect rect, SerializedProperty layer)
         {
-            var line = NextLine(ref rect);
+            DrawSwizzleFields(NextLine(ref rect), layer);
+        }
+
+        static void DrawSwizzleFields(Rect line, SerializedProperty layer)
+        {
             const float Gap = 8f;
             var width = (line.width - Gap * 3f) * 0.25f;
             DrawCompactLabeledField(new Rect(line.x, line.y, width, line.height), layer.FindPropertyRelative("R"), "R");

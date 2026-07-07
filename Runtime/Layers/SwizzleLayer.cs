@@ -23,18 +23,4 @@ namespace Unmanaged.LayeredTexture
             LayerCompute.Dispatch(shader, kernel, ctx);
         }
     }
-
-    public enum SwizzleChannelSource
-    {
-        R,
-        G,
-        B,
-        A,
-        OneMinusR,
-        OneMinusG,
-        OneMinusB,
-        OneMinusA,
-        Zero,
-        One
-    }
 }

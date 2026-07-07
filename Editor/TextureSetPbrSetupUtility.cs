@@ -70,9 +70,9 @@ namespace Unmanaged.LayeredTexture.Editor
                 return;
 
             if (maps.Alpha.HasValue)
-                layers.Add(TextureLayer(maps.Alpha.Value, ChannelWriteMask.A, ScalarSwizzle(TextureChannel.R)));
+                layers.Add(TextureLayer(maps.Alpha.Value, ChannelWriteMask.A, ScalarSwizzle(SwizzleChannelSource.R)));
             else if (maps.Color.HasValue)
-                layers.Add(TextureLayer(maps.Color.Value, ChannelWriteMask.A, ScalarSwizzle(TextureChannel.A)));
+                layers.Add(TextureLayer(maps.Color.Value, ChannelWriteMask.A, ScalarSwizzle(SwizzleChannelSource.A)));
         }
 
         static void FillArm(TextureSetRecipeSlot slot, TextureSetPbrTextureGatherer.Maps maps)
@@ -84,13 +84,13 @@ namespace Unmanaged.LayeredTexture.Editor
             layers.Add(Solid(new Color(1f, 1f, 0f, 1f)));
 
             if (maps.AO.HasValue)
-                layers.Add(TextureLayer(maps.AO.Value, ChannelWriteMask.R, ScalarSwizzle(TextureChannel.R)));
+                layers.Add(TextureLayer(maps.AO.Value, ChannelWriteMask.R, ScalarSwizzle(SwizzleChannelSource.R)));
 
             if (maps.Roughness.HasValue)
-                layers.Add(TextureLayer(maps.Roughness.Value, ChannelWriteMask.G, ScalarSwizzle(TextureChannel.R)));
+                layers.Add(TextureLayer(maps.Roughness.Value, ChannelWriteMask.G, ScalarSwizzle(SwizzleChannelSource.R)));
             else if (maps.Smoothness.HasValue)
             {
-                layers.Add(TextureLayer(maps.Smoothness.Value, ChannelWriteMask.G, ScalarSwizzle(TextureChannel.R)));
+                layers.Add(TextureLayer(maps.Smoothness.Value, ChannelWriteMask.G, ScalarSwizzle(SwizzleChannelSource.R)));
                 layers.Add(new InvertLayer
                 {
                     WriteMask = ChannelWriteMask.G
@@ -98,10 +98,10 @@ namespace Unmanaged.LayeredTexture.Editor
             }
 
             if (maps.Metallic.HasValue)
-                layers.Add(TextureLayer(maps.Metallic.Value, ChannelWriteMask.B, ScalarSwizzle(TextureChannel.R)));
+                layers.Add(TextureLayer(maps.Metallic.Value, ChannelWriteMask.B, ScalarSwizzle(SwizzleChannelSource.R)));
 
             if (maps.Height.HasValue)
-                layers.Add(TextureLayer(maps.Height.Value, ChannelWriteMask.A, ScalarSwizzle(TextureChannel.R)));
+                layers.Add(TextureLayer(maps.Height.Value, ChannelWriteMask.A, ScalarSwizzle(SwizzleChannelSource.R)));
         }
 
         static void FillMask(TextureSetRecipeSlot slot, TextureSetPbrTextureGatherer.Maps maps)
@@ -113,19 +113,19 @@ namespace Unmanaged.LayeredTexture.Editor
             layers.Add(Solid(new Color(0f, 1f, 0f, 1f)));
 
             if (maps.Metallic.HasValue)
-                layers.Add(TextureLayer(maps.Metallic.Value, ChannelWriteMask.R, ScalarSwizzle(TextureChannel.R)));
+                layers.Add(TextureLayer(maps.Metallic.Value, ChannelWriteMask.R, ScalarSwizzle(SwizzleChannelSource.R)));
 
             if (maps.AO.HasValue)
-                layers.Add(TextureLayer(maps.AO.Value, ChannelWriteMask.G, ScalarSwizzle(TextureChannel.R)));
+                layers.Add(TextureLayer(maps.AO.Value, ChannelWriteMask.G, ScalarSwizzle(SwizzleChannelSource.R)));
 
             if (maps.Height.HasValue)
-                layers.Add(TextureLayer(maps.Height.Value, ChannelWriteMask.B, ScalarSwizzle(TextureChannel.R)));
+                layers.Add(TextureLayer(maps.Height.Value, ChannelWriteMask.B, ScalarSwizzle(SwizzleChannelSource.R)));
 
             if (maps.Smoothness.HasValue)
-                layers.Add(TextureLayer(maps.Smoothness.Value, ChannelWriteMask.A, ScalarSwizzle(TextureChannel.R)));
+                layers.Add(TextureLayer(maps.Smoothness.Value, ChannelWriteMask.A, ScalarSwizzle(SwizzleChannelSource.R)));
             else if (maps.Roughness.HasValue)
             {
-                layers.Add(TextureLayer(maps.Roughness.Value, ChannelWriteMask.A, ScalarSwizzle(TextureChannel.R)));
+                layers.Add(TextureLayer(maps.Roughness.Value, ChannelWriteMask.A, ScalarSwizzle(SwizzleChannelSource.R)));
                 layers.Add(new InvertLayer
                 {
                     WriteMask = ChannelWriteMask.A
@@ -150,7 +150,7 @@ namespace Unmanaged.LayeredTexture.Editor
             if (maps.Height.HasValue)
             {
                 layers.Add(Solid(new Color(0f, 0f, 0f, 1f)));
-                layers.Add(TextureLayer(maps.Height.Value, ChannelWriteMask.R, ScalarSwizzle(TextureChannel.R)));
+                layers.Add(TextureLayer(maps.Height.Value, ChannelWriteMask.R, ScalarSwizzle(SwizzleChannelSource.R)));
                 layers.Add(new NormalFromHeightLayer());
                 return;
             }
@@ -181,7 +181,7 @@ namespace Unmanaged.LayeredTexture.Editor
             InputSwizzle = swizzle
         };
 
-        static ChannelSwizzle ScalarSwizzle(TextureChannel channel) => new()
+        static ChannelSwizzle ScalarSwizzle(SwizzleChannelSource channel) => new()
         {
             R = channel,
             G = channel,

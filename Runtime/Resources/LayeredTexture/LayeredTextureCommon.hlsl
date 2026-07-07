@@ -20,13 +20,45 @@
 #define LT_MASK_B 3
 #define LT_MASK_A 4
 
+float LT_SwizzleChannel(float4 value, uint source)
+{
+    if (source == 0)
+        return value.r;
+
+    if (source == 1)
+        return value.g;
+
+    if (source == 2)
+        return value.b;
+
+    if (source == 3)
+        return value.a;
+
+    if (source == 4)
+        return 1.0 - value.r;
+
+    if (source == 5)
+        return 1.0 - value.g;
+
+    if (source == 6)
+        return 1.0 - value.b;
+
+    if (source == 7)
+        return 1.0 - value.a;
+
+    if (source == 8)
+        return 0.0;
+
+    return 1.0;
+}
+
 float4 LT_Swizzle(float4 value, uint4 swizzle)
 {
     return float4(
-        value[(int)swizzle.x],
-        value[(int)swizzle.y],
-        value[(int)swizzle.z],
-        value[(int)swizzle.w]);
+        LT_SwizzleChannel(value, swizzle.x),
+        LT_SwizzleChannel(value, swizzle.y),
+        LT_SwizzleChannel(value, swizzle.z),
+        LT_SwizzleChannel(value, swizzle.w));
 }
 
 float4 LT_Blend(float4 previous, float4 candidate, uint blendMode)

@@ -117,21 +117,35 @@ namespace Unmanaged.LayeredTexture
     [Serializable]
     public struct ChannelSwizzle
     {
-        public TextureChannel R;
-        public TextureChannel G;
-        public TextureChannel B;
-        public TextureChannel A;
+        public SwizzleChannelSource R;
+        public SwizzleChannelSource G;
+        public SwizzleChannelSource B;
+        public SwizzleChannelSource A;
 
         /// <summary>
         /// Swizzle that preserves RGBA channel order.
         /// </summary>
         public static ChannelSwizzle Identity => new()
         {
-            R = TextureChannel.R,
-            G = TextureChannel.G,
-            B = TextureChannel.B,
-            A = TextureChannel.A
+            R = SwizzleChannelSource.R,
+            G = SwizzleChannelSource.G,
+            B = SwizzleChannelSource.B,
+            A = SwizzleChannelSource.A
         };
+    }
+
+    public enum SwizzleChannelSource
+    {
+        R,
+        G,
+        B,
+        A,
+        OneMinusR,
+        OneMinusG,
+        OneMinusB,
+        OneMinusA,
+        Zero,
+        One
     }
 
     /// <summary>

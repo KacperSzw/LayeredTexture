@@ -19,10 +19,10 @@ public sealed class TextureLayerClipboardTests
             WriteMask = ChannelWriteMask.R | ChannelWriteMask.A,
             InputSwizzle = new ChannelSwizzle
             {
-                R = TextureChannel.B,
-                G = TextureChannel.G,
-                B = TextureChannel.R,
-                A = TextureChannel.A
+                R = SwizzleChannelSource.B,
+                G = SwizzleChannelSource.G,
+                B = SwizzleChannelSource.R,
+                A = SwizzleChannelSource.A
             },
             Color = new Color(0.2f, 0.4f, 0.6f, 0.8f)
         };
@@ -38,10 +38,10 @@ public sealed class TextureLayerClipboardTests
         Assert.That(solid.BlendMode, Is.EqualTo(BlendMode.Subtract));
         Assert.That(solid.Opacity, Is.EqualTo(0.35f));
         Assert.That(solid.WriteMask, Is.EqualTo(ChannelWriteMask.R | ChannelWriteMask.A));
-        Assert.That(solid.InputSwizzle.R, Is.EqualTo(TextureChannel.B));
-        Assert.That(solid.InputSwizzle.G, Is.EqualTo(TextureChannel.G));
-        Assert.That(solid.InputSwizzle.B, Is.EqualTo(TextureChannel.R));
-        Assert.That(solid.InputSwizzle.A, Is.EqualTo(TextureChannel.A));
+        Assert.That(solid.InputSwizzle.R, Is.EqualTo(SwizzleChannelSource.B));
+        Assert.That(solid.InputSwizzle.G, Is.EqualTo(SwizzleChannelSource.G));
+        Assert.That(solid.InputSwizzle.B, Is.EqualTo(SwizzleChannelSource.R));
+        Assert.That(solid.InputSwizzle.A, Is.EqualTo(SwizzleChannelSource.A));
         Assert.That(solid.Color, Is.EqualTo(source.Color));
     }
 
